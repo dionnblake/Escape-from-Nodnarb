@@ -54,6 +54,7 @@ namespace EscapeFromNodnarb
         private ResultViewData lastResult;
         private bool runtimeReady;
         private bool runtimeInitializationStarted;
+        private int previousSleepTimeout = SleepTimeout.SystemSetting;
 
         public static NodnarbGame Instance
         {
@@ -158,6 +159,8 @@ namespace EscapeFromNodnarb
             Application.targetFrameRate = 60;
             QualitySettings.vSyncCount = 0;
             Screen.orientation = ScreenOrientation.Portrait;
+            previousSleepTimeout = Screen.sleepTimeout;
+            Screen.sleepTimeout = SleepTimeout.NeverSleep;
             Input.multiTouchEnabled = false;
 
             BuildCameraAndLight();
@@ -336,6 +339,7 @@ namespace EscapeFromNodnarb
                 instance = null;
             }
 
+            Screen.sleepTimeout = previousSleepTimeout;
             Time.timeScale = 1f;
         }
 
