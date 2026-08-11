@@ -1,0 +1,14 @@
+{
+  "name": "EscapeFromNodnarb.Tests.EditMode",
+  "rootNamespace": "EscapeFromNodnarb.Tests",
+  "references": [
+    "EscapeFromNodnarb.Runtime",
+    "EscapeFromNodnarb.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

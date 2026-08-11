@@ -1,0 +1,62 @@
+# Unity-generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Build and test artifacts
+Artifacts/
+*.apk
+*.aab
+*.ipa
+*.unitypackage
+TestResults*.xml
+
+# IDE files
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Signing material never belongs in source control
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+
+# Local agent and workspace metadata
+.codegraph/
+.claude/
+.hallmark/
+.utmp/
+loops/
+AGENTS.md
+**/AGENTS.md.meta
+grillin-transcript.md
+PROJECT_SPEC.md
+HANDOFF.md
+IOS_EXPORT_CHECKLIST.md
+
+# Blender/editor byproducts and reference-only material
+**/__pycache__/
+*.blend1
+Assets/EscapeFromNodnarb/Reference/
+Assets/EscapeFromNodnarb/Reference.meta
+*.blend1.meta

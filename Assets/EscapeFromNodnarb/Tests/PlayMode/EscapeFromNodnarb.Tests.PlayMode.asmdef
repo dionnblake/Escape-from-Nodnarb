@@ -1,0 +1,10 @@
+{
+  "name": "EscapeFromNodnarb.Tests.PlayMode",
+  "rootNamespace": "EscapeFromNodnarb.Tests",
+  "references": [
+    "EscapeFromNodnarb.Runtime"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

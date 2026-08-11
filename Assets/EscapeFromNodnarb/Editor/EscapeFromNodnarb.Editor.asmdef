@@ -1,0 +1,11 @@
+{
+  "name": "EscapeFromNodnarb.Editor",
+  "rootNamespace": "EscapeFromNodnarb.Editor",
+  "references": [
+    "EscapeFromNodnarb.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": true
+}

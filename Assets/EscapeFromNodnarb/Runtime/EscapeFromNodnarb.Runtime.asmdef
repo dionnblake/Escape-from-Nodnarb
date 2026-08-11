@@ -1,0 +1,8 @@
+{
+  "name": "EscapeFromNodnarb.Runtime",
+  "rootNamespace": "EscapeFromNodnarb",
+  "references": [
+    "Unity.ugui"
+  ],
+  "autoReferenced": true
+}

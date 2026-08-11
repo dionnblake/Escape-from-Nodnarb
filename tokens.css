@@ -1,0 +1,43 @@
+/* Hallmark · macrostructure: Workbench · tone: retro-industrial alien survival · anchor hue: acid green
+ * theme: custom dark terminal · nav: N9 edge-aligned minimal · bottom-action: C4 squad ability
+ * enrichment: H9 original procedural 3D centerpiece · audience: mobile horde-shooter players
+ * final visual critique: P4 H5 E4 S5 R4 V4
+ * slop test: PASS · tactical hierarchy, original assets, restrained signals, no gradients, glass, or copied game assets
+ */
+:root {
+  --color-void: #0b0e0b;
+  --color-surface: #141914;
+  --color-surface-raised: #1d241d;
+  --color-rule: #465046;
+  --color-text: #f2f5ed;
+  --color-muted: #8c9588;
+  --color-signal: #84cc16;
+  --color-signal-bright: #b7ff3c;
+  --color-danger: #d04b4b;
+  --color-weapon: #d9d5c7;
+  --color-weapon-upgrade: #ff9b43;
+  --color-captain-orange: #c66a32;
+  --color-canyon-rust: #9a452b;
+  --color-canyon-highlight: #d17642;
+  --color-alien-violet: #6c3a78;
+  --color-alien-glow: #f05a9d;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-body: "Space Grotesk", sans-serif;
+  --font-numeric: "Space Mono", monospace;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-md: 18px;
+  --text-lg: 28px;
+  --text-xl: 48px;
+  --ease-tactile: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 100ms;
+  --dur-state: 180ms;
+  --rule-hairline: 1px;
+  --radius-control: 2px;
+}
