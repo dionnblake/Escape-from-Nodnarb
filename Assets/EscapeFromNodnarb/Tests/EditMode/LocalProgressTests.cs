@@ -28,6 +28,7 @@ namespace EscapeFromNodnarb.Tests
         public void JsonRoundTripPreservesProgress()
         {
             ProgressData original = new ProgressData();
+            original.OnboardingComplete = true;
             original.RecordCampaignResult(3, 777, 21, true);
             string json = JsonUtility.ToJson(original);
             ProgressData restored = JsonUtility.FromJson<ProgressData>(json);
@@ -36,6 +37,7 @@ namespace EscapeFromNodnarb.Tests
             Assert.That(restored.IsLevelCompleted(3), Is.True);
             Assert.That(restored.BestScores[2], Is.EqualTo(777));
             Assert.That(restored.Credits, Is.EqualTo(21));
+            Assert.That(restored.OnboardingComplete, Is.True);
         }
 
         [Test]

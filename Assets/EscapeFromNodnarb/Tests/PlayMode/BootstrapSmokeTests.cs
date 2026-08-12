@@ -122,6 +122,33 @@ namespace EscapeFromNodnarb.Tests
         }
 
         [UnityTest]
+        public IEnumerator FirstRunOnboardingAndCardChoiceGuideAreVisible()
+        {
+            NodnarbGame game = NodnarbBootstrap.EnsureGame();
+            yield return null;
+            LocalProgress.Save(new ProgressData());
+            game.ShowTitle();
+            game.OpenEndlessStory();
+            game.BeginPendingRun();
+            yield return null;
+
+            Transform onboarding = game.transform.Find("Interface/SafeArea/GameHud/OnboardingHint");
+            Assert.That(onboarding, Is.Not.Null);
+            Assert.That(onboarding.gameObject.activeSelf, Is.True);
+            Assert.That(onboarding.GetComponent<UnityEngine.UI.Text>().text, Does.Contain("MOVE"));
+            Assert.That(LocalProgress.Load().OnboardingComplete, Is.True);
+
+            yield return new WaitForSeconds(3.8f);
+            Transform cardChoice = game.transform.Find("Interface/SafeArea/GameHud/CardChoiceHint");
+            Assert.That(cardChoice, Is.Not.Null);
+            Assert.That(cardChoice.gameObject.activeSelf, Is.True);
+            Assert.That(cardChoice.GetComponent<UnityEngine.UI.Text>().text, Does.Contain("CHOOSE ONE"));
+
+            game.AbortRun();
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator SectorMapShowsSelectedRouteAndBossBrief()
         {
             NodnarbGame game = NodnarbBootstrap.EnsureGame();
@@ -260,10 +287,18 @@ namespace EscapeFromNodnarb.Tests
             Assert.That(Mathf.Abs(firstSoldier.position.x - captain.position.x), Is.GreaterThan(0.45f));
             Assert.That(Mathf.Abs(secondSoldier.position.x - captain.position.x), Is.GreaterThan(0.45f));
             Assert.That(Vector3.Distance(firstSoldier.position, secondSoldier.position), Is.GreaterThan(0.8f));
+            Bounds captainBounds = GetBounds(captain);
             Bounds firstBounds = GetBounds(firstSoldier);
             Bounds secondBounds = GetBounds(secondSoldier);
-            Debug.Log("NODNARB_CAPTAIN_BOUNDS " + GetBounds(captain));
+            Debug.Log("NODNARB_LEADER_FRONT captainZ=" + captain.position.z + " crewZ=" + firstSoldier.position.z + "," + secondSoldier.position.z
+                + " captainHeight=" + captainBounds.size.y + " crewHeight=" + firstBounds.size.y);
+            Debug.Log("NODNARB_CAPTAIN_BOUNDS " + captainBounds);
             Debug.Log("NODNARB_SQUAD_BOUNDS first=" + firstBounds + " second=" + secondBounds);
+            Assert.That(captain.position.z, Is.LessThan(firstSoldier.position.z - 0.75f), "Captain must be in front of Crew_1 on the combat Z axis.");
+            Assert.That(captain.position.z, Is.LessThan(secondSoldier.position.z - 0.75f), "Captain must be in front of Crew_2 on the combat Z axis.");
+            Assert.That(captainBounds.size.y, Is.InRange(1.2f, 1.7f), "Captain should read as a grounded human leader, not a giant actor.");
+            Assert.That(firstBounds.size.y, Is.LessThan(captainBounds.size.y * 0.90f), "Crew_1 must remain visibly subordinate to the Captain.");
+            Assert.That(secondBounds.size.y, Is.LessThan(captainBounds.size.y * 0.90f), "Crew_2 must remain visibly subordinate to the Captain.");
             Assert.That(firstBounds.min.y, Is.GreaterThanOrEqualTo(0f));
             Assert.That(secondBounds.min.y, Is.GreaterThanOrEqualTo(0f));
             Assert.That(firstBounds.size.y, Is.InRange(0.9f, 1.7f));

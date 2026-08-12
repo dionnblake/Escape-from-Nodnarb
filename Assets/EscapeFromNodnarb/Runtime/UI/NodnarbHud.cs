@@ -48,6 +48,8 @@ namespace EscapeFromNodnarb
         private Text hudScore;
         private Text hudThreat;
         private Text inputHint;
+        private Text cardChoiceHint;
+        private Text onboardingHint;
         private Text combatWarning;
         private Text abilityText;
         private Button abilityButton;
@@ -57,6 +59,8 @@ namespace EscapeFromNodnarb
         private Color pickupFeedbackColor;
         private float pickupFeedbackTimer;
         private float combatWarningTimer;
+        private float onboardingTimer;
+        private const float OnboardingDuration = 6.8f;
 
         private Text resultStatus;
         private Text resultReason;
@@ -152,7 +156,7 @@ namespace EscapeFromNodnarb
             storyMessage.text = "MILESTONE // " + CampaignCatalog.MilestoneBrief(level) + "\n\n" + level.RadioMessage;
         }
 
-        public void ShowGameplay()
+        public void ShowGameplay(bool showOnboarding)
         {
             HideAll();
             gameHud.gameObject.SetActive(true);
@@ -160,6 +164,9 @@ namespace EscapeFromNodnarb
             SetOverlayAlpha(0f);
             HidePickupFeedback();
             HideCombatWarning();
+            onboardingTimer = showOnboarding ? OnboardingDuration : 0f;
+            onboardingHint.gameObject.SetActive(showOnboarding);
+            cardChoiceHint.gameObject.SetActive(false);
         }
 
         public void ShowPause()
@@ -273,7 +280,7 @@ namespace EscapeFromNodnarb
             loadoutCredits.text = "LOCAL SALVAGE   " + progress.Credits.ToString("0000") + "\nPOWER IS EARNED, NEVER SOLD";
         }
 
-        public void UpdateGameplay(RunModel model, LevelDefinition level, float elapsed, bool endless, bool bossActive, int volleyCount)
+        public void UpdateGameplay(RunModel model, LevelDefinition level, float elapsed, bool endless, bool bossActive, int volleyCount, bool cardChoiceActive, float relativeX)
         {
             hudHealth.text = "CAPTAIN " + Mathf.CeilToInt(model.CaptainHealth).ToString("000");
             hudHealthFill.fillAmount = Mathf.Clamp01(model.CaptainHealth / RunModel.MaxCaptainHealth);
@@ -283,9 +290,34 @@ namespace EscapeFromNodnarb
             hudSquad.text = "SQUAD " + model.SoldierCount.ToString("00") + "/12" + (model.OverflowRecruits > 0 ? "   OVERCHARGE +" + model.OverflowRecruits : string.Empty);
             hudPower.text = "PWR " + (model.WeaponLevel + 1).ToString("00") + "   //   RATE " + model.ShotsPerSecond.ToString("0.0") + "/S";
             hudScore.text = "SCORE " + model.Score.ToString("000000");
-            inputHint.text = "VOLLEY " + Mathf.Max(0, volleyCount).ToString("00") + "  //  AUTO-FIRE ACTIVE";
+            inputHint.text = "VOLLEY " + Mathf.Max(0, volleyCount).ToString("00") + "  //  AUTO-FIRE  //  DRAG TO MOVE";
             hudThreat.text = bossActive ? "HEAVY CONTACT // " + level.BossName.ToUpperInvariant() + " // HOLD THE LINE" : string.Empty;
             hudThreat.color = bossActive ? GameTheme.Danger : GameTheme.Muted;
+
+            if (cardChoiceActive)
+            {
+                cardChoiceHint.text = CardChoice.Hint(relativeX);
+                cardChoiceHint.color = relativeX <= -CardChoice.SideThreshold
+                    ? GameTheme.WeaponUpgrade
+                    : relativeX >= CardChoice.SideThreshold ? GameTheme.SignalBright : GameTheme.Text;
+                cardChoiceHint.gameObject.SetActive(true);
+            }
+            else
+            {
+                cardChoiceHint.gameObject.SetActive(false);
+            }
+
+            if (onboardingTimer > 0f)
+            {
+                onboardingTimer = Mathf.Max(0f, onboardingTimer - Time.unscaledDeltaTime);
+                float shown = OnboardingDuration - onboardingTimer;
+                onboardingHint.text = shown < 2.25f
+                    ? "MOVE  //  DRAG CAPTAIN LEFT OR RIGHT"
+                    : shown < 4.55f
+                        ? "AUTO-FIRE  //  LINE UP ENEMIES OR ONE CARD"
+                        : "OVERDRIVE  //  TAP WHEN THE LINE GETS HOT";
+                onboardingHint.gameObject.SetActive(onboardingTimer > 0f);
+            }
 
             if (model.RapidFireActive)
             {
@@ -373,6 +405,17 @@ namespace EscapeFromNodnarb
             loadoutScreen.gameObject.SetActive(false);
             levelScreen.gameObject.SetActive(false);
             HideCombatWarning();
+            if (cardChoiceHint != null)
+            {
+                cardChoiceHint.gameObject.SetActive(false);
+            }
+
+            if (onboardingHint != null)
+            {
+                onboardingHint.gameObject.SetActive(false);
+            }
+
+            onboardingTimer = 0f;
         }
 
         private void HidePickupFeedback()
@@ -550,6 +593,14 @@ namespace EscapeFromNodnarb
             UiFactory.Anchor(hudScore.rectTransform, new Vector2(0.66f, 0.091f), new Vector2(0.965f, 0.119f), Vector2.zero, Vector2.zero);
             inputHint = UiFactory.Label(gameHud, "InputHint", "VOLLEY 03  //  AUTO-FIRE ACTIVE", 15, GameTheme.Muted, TextAnchor.MiddleCenter);
             UiFactory.Anchor(inputHint.rectTransform, new Vector2(0.08f, 0.116f), new Vector2(0.92f, 0.141f), Vector2.zero, Vector2.zero);
+
+            cardChoiceHint = UiFactory.Label(gameHud, "CardChoiceHint", string.Empty, 17, GameTheme.Text, TextAnchor.MiddleCenter);
+            UiFactory.Anchor(cardChoiceHint.rectTransform, new Vector2(0.04f, 0.695f), new Vector2(0.96f, 0.735f), Vector2.zero, Vector2.zero);
+            cardChoiceHint.gameObject.SetActive(false);
+
+            onboardingHint = UiFactory.Label(gameHud, "OnboardingHint", string.Empty, 23, GameTheme.Text, TextAnchor.MiddleCenter);
+            UiFactory.Anchor(onboardingHint.rectTransform, new Vector2(0.06f, 0.585f), new Vector2(0.94f, 0.645f), Vector2.zero, Vector2.zero);
+            onboardingHint.gameObject.SetActive(false);
 
             abilityButton = UiFactory.ActionButton(gameHud, "RapidFire", "OVERDRIVE  READY", game.ActivateRapidFire, true);
             abilityText = abilityButton.GetComponentInChildren<Text>();

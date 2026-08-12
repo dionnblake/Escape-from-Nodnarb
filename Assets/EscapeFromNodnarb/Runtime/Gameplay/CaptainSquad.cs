@@ -8,8 +8,13 @@ namespace EscapeFromNodnarb
     {
         private const string CaptainPrefabResourcePath = "Captain/CaptainVisual";
         private const string CaptainSourceResourcePath = "Captain/Captain_Unity";
-        private const float ImportedCaptainVisualScale = 0.92f;
-        private const float ImportedSoldierVisualScale = 2.0f;
+        // Keep the squad subordinate to the incoming horde while preserving a
+        // readable leader silhouette on portrait screens.
+        private const float ImportedCaptainVisualScale = 0.82f;
+        private const float ImportedSoldierVisualScale = 1.12f;
+        private const float CaptainLocalZOffset = 0.45f;
+        private const float CrewFirstRowZOffset = 1.35f;
+        private const float CrewRowZSpacing = 0.82f;
         private readonly Transform owner;
         private readonly List<Transform> soldiers = new List<Transform>();
         private readonly List<Vector3> soldierBaseScales = new List<Vector3>();
@@ -68,7 +73,7 @@ namespace EscapeFromNodnarb
             root.transform.position = new Vector3(0f, 0f, 0f);
             targetX = 0f;
             routeCenterX = 0f;
-            captain = BuildUnit("Captain", root.transform, new Vector3(0f, 0f, GameTheme.CaptainZ + 0.55f), 1f, GameTheme.SuitColor(suitIndex), true);
+            captain = BuildUnit("Captain", root.transform, new Vector3(0f, 0f, GameTheme.CaptainZ + CaptainLocalZOffset), 1f, GameTheme.SuitColor(suitIndex), true);
             captainBaseScale = captain.localScale;
             captainMuzzle = captain.Find("Muzzle");
             RegisterMuzzleFlash(captainMuzzle);
@@ -297,9 +302,9 @@ namespace EscapeFromNodnarb
             int row = index / 4;
             int inRow = index % 4;
             int countInRow = Mathf.Min(4, totalSoldiers - row * 4);
-            float spacing = countInRow <= 2 ? 1.35f : countInRow == 3 ? 1.05f : 0.82f;
+            float spacing = countInRow <= 2 ? 1.08f : countInRow == 3 ? 0.92f : 0.76f;
             float x = (inRow - (countInRow - 1) * 0.5f) * spacing;
-            float z = GameTheme.CaptainZ + 1.65f + row * 0.88f;
+            float z = GameTheme.CaptainZ + CrewFirstRowZOffset + row * CrewRowZSpacing;
             if (index >= 8)
             {
                 x += 0.41f;

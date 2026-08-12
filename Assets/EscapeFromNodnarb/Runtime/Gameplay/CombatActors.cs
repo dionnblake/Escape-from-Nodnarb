@@ -831,6 +831,29 @@ namespace EscapeFromNodnarb
             PrimitiveFactory.Cube("CardSideSignalRight", transform, transform.position + new Vector3(0.66f, 0.92f, -0.20f),
                 new Vector3(0.07f, 0.86f, 0.05f), cardColor);
 
+            if (kind == CardKind.Weapon)
+            {
+                PrimitiveFactory.Cube("WeaponIconBody", transform, transform.position + new Vector3(0f, 1.25f, -0.24f),
+                    new Vector3(0.62f, 0.12f, 0.08f), cardColor);
+                PrimitiveFactory.Cube("WeaponIconGrip", transform, transform.position + new Vector3(-0.18f, 1.10f, -0.24f),
+                    new Vector3(0.12f, 0.28f, 0.08f), cardColor);
+                PrimitiveFactory.Cube("WeaponIconMuzzle", transform, transform.position + new Vector3(0.38f, 1.25f, -0.24f),
+                    new Vector3(0.16f, 0.08f, 0.08f), cardColor);
+            }
+            else
+            {
+                for (int crewIndex = 0; crewIndex < 3; crewIndex++)
+                {
+                    float iconX = (crewIndex - 1) * 0.25f;
+                    PrimitiveFactory.Sphere("CrewIconHead" + crewIndex, transform,
+                        transform.position + new Vector3(iconX, 1.35f, -0.24f),
+                        new Vector3(0.12f, 0.12f, 0.08f), cardColor);
+                    PrimitiveFactory.Capsule("CrewIconBody" + crewIndex, transform,
+                        transform.position + new Vector3(iconX, 1.16f, -0.24f),
+                        new Vector3(0.16f, 0.26f, 0.09f), cardColor);
+                }
+            }
+
             GameObject labelObject = new GameObject("Label");
             labelObject.transform.SetParent(transform, false);
             labelObject.transform.localPosition = new Vector3(0f, 0.93f, -0.22f);

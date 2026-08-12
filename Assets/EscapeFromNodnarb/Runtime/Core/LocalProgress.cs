@@ -13,6 +13,7 @@ namespace EscapeFromNodnarb
         public int SelectedWeapon;
         public int SelectedSuit;
         public int EndlessBest;
+        public bool OnboardingComplete;
         public int[] BestScores = new int[10];
 
         public void Sanitize()

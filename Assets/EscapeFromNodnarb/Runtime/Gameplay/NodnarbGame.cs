@@ -296,7 +296,7 @@ namespace EscapeFromNodnarb
 
             if (!endless)
             {
-                if (!bossSpawned && elapsed >= currentLevel.DurationSeconds - 12f)
+                if (!bossSpawned && elapsed >= currentLevel.DurationSeconds - currentLevel.BossLeadSeconds)
                 {
                     SpawnBoss();
                 }
@@ -317,7 +317,7 @@ namespace EscapeFromNodnarb
             }
 
             bool bossActive = bossAgent != null && bossAgent.IsAlive;
-            hud.UpdateGameplay(model, currentLevel, elapsed, endless, bossActive, squad.ShooterCount);
+            hud.UpdateGameplay(model, currentLevel, elapsed, endless, bossActive, squad.ShooterCount, cards.Count > 0, SquadRelativeX);
             if (model.IsEnded)
             {
                 FinishRun();
@@ -448,6 +448,7 @@ namespace EscapeFromNodnarb
             if (CombatActive && model.ActivateRapidFire())
             {
                 audioSystem.Ability();
+                DeviceFeedback.Pulse(DeviceFeedbackKind.Ability);
             }
         }
 
@@ -589,6 +590,7 @@ namespace EscapeFromNodnarb
 
             model.AddScore(50);
             hud.ShowPickup(activated.Kind, model);
+            DeviceFeedback.Pulse(DeviceFeedbackKind.Pickup);
         }
 
         public void OnFrontLineBreached(float contactDamage)
@@ -601,6 +603,7 @@ namespace EscapeFromNodnarb
             model.BreachFrontLine();
             hud.PulseDamage();
             audioSystem.Damage();
+            DeviceFeedback.Pulse(DeviceFeedbackKind.Damage);
         }
 
         public void FireHostile(Vector3 origin, Vector3 target, float damage)
@@ -683,6 +686,7 @@ namespace EscapeFromNodnarb
             model.DamageCaptain(damage);
             hud.PulseDamage();
             audioSystem.Damage();
+            DeviceFeedback.Pulse(DeviceFeedbackKind.Damage);
             return true;
         }
 
@@ -773,8 +777,8 @@ namespace EscapeFromNodnarb
             model = new RunModel(RunModel.StartingSoldiers, progress.SelectedWeapon);
             random = new System.Random(level.Seed ^ attemptSequence * 7919);
             elapsed = 0f;
-            spawnTimer = 0.65f;
-            cardTimer = 3.2f;
+            spawnTimer = currentLevel.OpeningDelaySeconds;
+            cardTimer = currentLevel.CardStartDelaySeconds;
             fireTimer = 0.28f;
             pairSequence = 0;
             waveSequence = 0;
@@ -790,8 +794,15 @@ namespace EscapeFromNodnarb
             world.Build(level, gameCamera);
             squad.Build(model, progress.SelectedSuit);
             projectiles.ClearActive();
-            hud.ShowGameplay();
-            hud.UpdateGameplay(model, currentLevel, elapsed, endless, false, squad.ShooterCount);
+            bool showOnboarding = !progress.OnboardingComplete;
+            if (showOnboarding)
+            {
+                progress.OnboardingComplete = true;
+                LocalProgress.Save(progress);
+            }
+
+            hud.ShowGameplay(showOnboarding);
+            hud.UpdateGameplay(model, currentLevel, elapsed, endless, false, squad.ShooterCount, false, SquadRelativeX);
         }
 
         private void FinishRun()
@@ -839,6 +850,8 @@ namespace EscapeFromNodnarb
             {
                 audioSystem.Defeat();
             }
+
+            DeviceFeedback.Pulse(DeviceFeedbackKind.Result);
 
             projectiles.ClearActive();
             hud.ShowResult(lastResult);
@@ -912,7 +925,9 @@ namespace EscapeFromNodnarb
                 }
 
                 Vector3 target = card.HitPosition;
-                float score = (target - origin).sqrMagnitude * 0.78f + (card.Kind == CardKind.Recruit ? -0.20f : 0f);
+                float score = (target - origin).sqrMagnitude * 0.78f
+                    + Mathf.Abs(target.x - origin.x) * 0.40f
+                    + CardChoice.TargetBias(card.Kind, SquadRelativeX);
                 if (score < bestScore)
                 {
                     best = card;
@@ -1016,16 +1031,21 @@ namespace EscapeFromNodnarb
             switch (pattern)
             {
                 case WavePattern.RushLanes:
-                    return baseInterval * 0.92f;
+                    return baseInterval * 0.92f * CurrentWaveCadence();
                 case WavePattern.Crossfire:
-                    return baseInterval * 1.08f;
+                    return baseInterval * 1.08f * CurrentWaveCadence();
                 case WavePattern.ArmorColumns:
-                    return baseInterval * 1.20f;
+                    return baseInterval * 1.20f * CurrentWaveCadence();
                 case WavePattern.SwarmPulse:
-                    return baseInterval * 0.64f;
+                    return baseInterval * 0.64f * CurrentWaveCadence();
                 default:
-                    return baseInterval * 0.82f;
+                    return baseInterval * 0.82f * CurrentWaveCadence();
             }
+        }
+
+        private float CurrentWaveCadence()
+        {
+            return currentLevel == null ? 1f : currentLevel.WaveCadenceMultiplier;
         }
 
         private EnemyKind ChooseEnemyKind(WavePattern pattern, float progress01, float difficulty, int sequence)
@@ -1122,7 +1142,7 @@ namespace EscapeFromNodnarb
             GameObject recruitObject = new GameObject("RecruitCardPair_" + pairSequence);
             recruitObject.transform.SetParent(transform, false);
             recruitObject.AddComponent<TargetCard>().Initialize(this, pairSequence, CardKind.Recruit, CurrentDifficulty(), currentLevel.CardPath);
-            cardTimer = Range(8.2f, 11.2f);
+            cardTimer = Range(currentLevel.CardIntervalMinSeconds, currentLevel.CardIntervalMaxSeconds);
         }
 
         private void SelectWeapon(int direction)
@@ -1163,7 +1183,7 @@ namespace EscapeFromNodnarb
 
         private float CurrentDifficulty()
         {
-            float ramp = endless ? Mathf.Min(0.95f, elapsed / 240f) : Mathf.Clamp01(elapsed / Mathf.Max(1f, currentLevel.DurationSeconds)) * 0.18f;
+            float ramp = endless ? Mathf.Min(0.95f, elapsed / 240f) : Mathf.Clamp01(elapsed / Mathf.Max(1f, currentLevel.DurationSeconds)) * currentLevel.DifficultyRamp;
             return Mathf.Clamp(currentLevel.Difficulty + ramp, 0.1f, 1.65f);
         }
 

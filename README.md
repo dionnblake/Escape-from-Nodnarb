@@ -32,7 +32,7 @@ The supplied Hero Wars advertisement is a mechanical reference only. No Hero War
 
 This repository contains a ten-stage Android-first prototype with a visible route-shaped sector map, original low-poly character and world-landmark assets, readable pickup targets, local progression, stable failure/victory result flow, replay, route beats, boss behavior briefs, pooled combat feedback, enemy health bands, and explicit pickup payoff. Stages 1-10 have distinct environment framing and escape objectives, with later-stage near-field identity for Crystal Fault, Hive Trench, Night Shelf, Beacon Plain, and Extraction Ring. Core terrain remains procedural and needs a final art approval pass before store release. The projectile pool warms 16 slots and grows on demand to keep title startup lighter.
 
-This is an actively developed prototype, not a store-ready release. The Android build has been installed and exercised on a Galaxy S24 Ultra. One fresh-install launch still needs additional startup hardening before release, while normal relaunch and gameplay flow are working. iOS remains an export target until it is built with Xcode on macOS.
+This is an actively developed prototype, not a store-ready release. The latest Android build has been installed and exercised on a Galaxy S24 Ultra, including combat, failure recovery, return-to-title, and three cold starts. Graybox/procedural art, rights approval, broader campaign replay, outside testing, and iOS remain open release gates.
 
 ## Local commands
 
@@ -72,12 +72,12 @@ The repository intentionally excludes Unity caches, local builds, screenshots/lo
 
 ## Local verification snapshot
 
-- Unity 6000.3.21f1 EditMode: 25/25 passed.
-- Unity 6000.3.21f1 PlayMode: 31/31 passed.
-- Android debug build: ARM64, min SDK 26, target SDK 36, package `com.alphaleverage.escapefromnodnarb`.
-- Device smoke run: title, story, combat, squad growth, pause/resume, failure result, replay, and three cold relaunches were exercised on a Galaxy S24 Ultra.
+- Unity 6000.3.21f1 EditMode: 29/29 passed in the sprint-09 card-choice run.
+- Unity 6000.3.21f1 PlayMode: 32/32 passed in the sprint-09 card-choice run.
+- Android debug build: ARM64, min SDK 26, target SDK 36, package `com.alphaleverage.escapefromnodnarb`, APK SHA-256 `7A585252BAEB8B6A1237A626FEDAA67547B4DAB30BA8961E9CA46FC55237E5C3`.
+- Device smoke run: title, story, live combat with four soldiers and `VOLLEY 05`, failure result, return-to-title, and three cold relaunches were exercised on a Galaxy S24 Ultra with zero ANR/FATAL matches.
 - iOS/macOS/Xcode: not verified.
 
-This repository does not include the local APK, screenshots, logs, or generic verifier output. The generic verifier does not recognize Unity-only projects, so Unity-native tests and Android packaging are the applicable checks. First-install startup hardening, broader device coverage, final art approval, and rights review remain open.
+This repository does not include the local APK, screenshots, logs, or generic verifier output. The generic verifier does not recognize Unity-only projects, so Unity-native tests and Android packaging are the applicable checks. Broader device/campaign coverage, final art approval, outside testing, iOS/Xcode, and rights review remain open.
 
 No ads, analytics, purchases, telemetry, accounts, or remote services are enabled.

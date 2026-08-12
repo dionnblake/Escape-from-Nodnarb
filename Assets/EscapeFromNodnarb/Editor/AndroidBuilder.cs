@@ -1,7 +1,7 @@
 using System;
 using System.IO;
+using System.Reflection;
 using UnityEditor;
-using UnityEditor.Android;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
@@ -54,20 +54,64 @@ namespace EscapeFromNodnarb.Editor
             string sdkPath = ResolveEnvironmentPath("UNITY_ANDROID_SDK_ROOT", "ANDROID_SDK_ROOT");
             if (!string.IsNullOrWhiteSpace(sdkPath))
             {
-                AndroidExternalToolsSettings.sdkRootPath = ValidateExternalToolPath("Android SDK", sdkPath);
+                TrySetExternalToolPath("sdkRootPath", ValidateExternalToolPath("Android SDK", sdkPath));
             }
 
             string ndkPath = ResolveEnvironmentPath("UNITY_ANDROID_NDK_ROOT", "ANDROID_NDK_ROOT");
             if (!string.IsNullOrWhiteSpace(ndkPath))
             {
-                AndroidExternalToolsSettings.ndkRootPath = ValidateExternalToolPath("Android NDK", ndkPath);
+                TrySetExternalToolPath("ndkRootPath", ValidateExternalToolPath("Android NDK", ndkPath));
             }
 
             string jdkPath = ResolveEnvironmentPath("UNITY_JAVA_HOME", "JAVA_HOME");
             if (!string.IsNullOrWhiteSpace(jdkPath))
             {
-                AndroidExternalToolsSettings.jdkRootPath = ValidateExternalToolPath("JDK", jdkPath);
+                TrySetExternalToolPath("jdkRootPath", ValidateExternalToolPath("JDK", jdkPath));
             }
+        }
+
+        private static void TrySetExternalToolPath(string memberName, string value)
+        {
+            Type settingsType = FindExternalToolsSettingsType();
+            if (settingsType == null)
+            {
+                Debug.LogWarning("NODNARB_ANDROID_TOOL API unavailable; using Unity's configured external tools.");
+                return;
+            }
+
+            PropertyInfo property = settingsType.GetProperty(memberName, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            if (property != null && property.CanWrite)
+            {
+                property.SetValue(null, value, null);
+                return;
+            }
+
+            FieldInfo field = settingsType.GetField(memberName, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            if (field != null)
+            {
+                field.SetValue(null, value);
+            }
+        }
+
+        private static Type FindExternalToolsSettingsType()
+        {
+            const string fullName = "UnityEditor.Android.AndroidExternalToolsSettings";
+            Type type = Type.GetType(fullName + ", UnityEditor.Android.Extensions");
+            if (type != null)
+            {
+                return type;
+            }
+
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                type = assembly.GetType(fullName, false);
+                if (type != null)
+                {
+                    return type;
+                }
+            }
+
+            return null;
         }
 
         private static string ResolveEnvironmentPath(string preferredVariable, string fallbackVariable)

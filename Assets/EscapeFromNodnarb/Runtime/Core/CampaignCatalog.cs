@@ -76,6 +76,13 @@ namespace EscapeFromNodnarb
         public CardPathPattern CardPath;
         public RouteShape Route;
         public BossBehavior BossBehavior;
+        public float OpeningDelaySeconds = 0.65f;
+        public float CardStartDelaySeconds = 3.2f;
+        public float CardIntervalMinSeconds = 8.2f;
+        public float CardIntervalMaxSeconds = 11.2f;
+        public float BossLeadSeconds = 12f;
+        public float DifficultyRamp = 0.18f;
+        public float WaveCadenceMultiplier = 1f;
 
         public LevelDefinition(
             int index,
@@ -117,43 +124,133 @@ namespace EscapeFromNodnarb
             new LevelDefinition(1, "N-01", "Wreck Interior", "HULL BREACH",
                 "NAV CORE: Hull split on impact. Rescue ping is weak. Hold the shelf while I rebuild the route.",
                 "Gravel Maw", 66f, 0.14f, 1103, BiomeId.CrashGlass, WavePattern.RushLanes,
-                CardPathPattern.RailLock, RouteShape.WreckInterior, BossBehavior.Crusher),
+                CardPathPattern.RailLock, RouteShape.WreckInterior, BossBehavior.Crusher)
+            {
+                OpeningDelaySeconds = 0.72f,
+                CardStartDelaySeconds = 3.6f,
+                CardIntervalMinSeconds = 8.8f,
+                CardIntervalMaxSeconds = 10.8f,
+                BossLeadSeconds = 13f,
+                DifficultyRamp = 0.14f,
+                WaveCadenceMultiplier = 1.08f
+            },
             new LevelDefinition(2, "N-02", "Crash Basin", "NO WAY BACK",
                 "CAPTAIN: The ship is burning behind us. The canyon is the only line toward the beacon.",
                 "Canyon Brute", 68f, 0.22f, 2207, BiomeId.RustCanyon, WavePattern.ArmorColumns,
-                CardPathPattern.GentleDrift, RouteShape.CanyonBend, BossBehavior.Striker),
+                CardPathPattern.GentleDrift, RouteShape.CanyonBend, BossBehavior.Striker)
+            {
+                OpeningDelaySeconds = 0.90f,
+                CardStartDelaySeconds = 4.4f,
+                CardIntervalMinSeconds = 8.6f,
+                CardIntervalMaxSeconds = 10.2f,
+                BossLeadSeconds = 13f,
+                DifficultyRamp = 0.17f,
+                WaveCadenceMultiplier = 1.12f
+            },
             new LevelDefinition(3, "N-03", "Unknown March", "THE PLANET MOVES",
                 "NAV CORE: Spores react to heat. Every shot tells the planet exactly where we are.",
                 "Bloom Stalker", 70f, 0.30f, 3301, BiomeId.SporeField, WavePattern.Crossfire,
-                CardPathPattern.WideSweep, RouteShape.UnknownWinding, BossBehavior.Barrager),
+                CardPathPattern.WideSweep, RouteShape.UnknownWinding, BossBehavior.Barrager)
+            {
+                OpeningDelaySeconds = 0.82f,
+                CardStartDelaySeconds = 3.4f,
+                CardIntervalMinSeconds = 9.2f,
+                CardIntervalMaxSeconds = 11.0f,
+                BossLeadSeconds = 14f,
+                DifficultyRamp = 0.20f,
+                WaveCadenceMultiplier = 0.96f
+            },
             new LevelDefinition(4, "N-04", "Whiteglass Pass", "COLD SIGNAL",
                 "CREW: Those arches are not stone. Keep moving before whatever made them comes home.",
                 "Whiteglass Howler", 72f, 0.39f, 4409, BiomeId.Snowline, WavePattern.SwarmPulse,
-                CardPathPattern.StaggeredDrift, RouteShape.SnowSwitchback, BossBehavior.Howler),
+                CardPathPattern.StaggeredDrift, RouteShape.SnowSwitchback, BossBehavior.Howler)
+            {
+                OpeningDelaySeconds = 0.72f,
+                CardStartDelaySeconds = 4.0f,
+                CardIntervalMinSeconds = 7.4f,
+                CardIntervalMaxSeconds = 9.0f,
+                BossLeadSeconds = 14f,
+                DifficultyRamp = 0.23f,
+                WaveCadenceMultiplier = 0.88f
+            },
             new LevelDefinition(5, "N-05", "Silent Ruins", "A SIGNAL UNDER THE STATIC",
                 "NAV CORE: I found a relay beneath the ruins. Power it and rescue may finally hear us.",
                 "Relay Warden", 74f, 0.48f, 5519, BiomeId.SignalRuins, WavePattern.Crossfire,
-                CardPathPattern.RailLock, RouteShape.RelaySwerve, BossBehavior.Sentry),
+                CardPathPattern.RailLock, RouteShape.RelaySwerve, BossBehavior.Sentry)
+            {
+                OpeningDelaySeconds = 0.96f,
+                CardStartDelaySeconds = 5.2f,
+                CardIntervalMinSeconds = 9.8f,
+                CardIntervalMaxSeconds = 12.2f,
+                BossLeadSeconds = 15f,
+                DifficultyRamp = 0.25f,
+                WaveCadenceMultiplier = 1.04f
+            },
             new LevelDefinition(6, "N-06", "Crystal Fault", "THE PLANET ANSWERS",
                 "CAPTAIN: The relay worked. Something else answered first. Cut through the fault.",
                 "Shard Titan", 76f, 0.57f, 6607, BiomeId.CrystalFault, WavePattern.ArmorColumns,
-                CardPathPattern.WideSweep, RouteShape.CrystalShelf, BossBehavior.Carrier),
+                CardPathPattern.WideSweep, RouteShape.CrystalShelf, BossBehavior.Carrier)
+            {
+                OpeningDelaySeconds = 0.86f,
+                CardStartDelaySeconds = 3.7f,
+                CardIntervalMinSeconds = 8.4f,
+                CardIntervalMaxSeconds = 10.6f,
+                BossLeadSeconds = 14f,
+                DifficultyRamp = 0.27f,
+                WaveCadenceMultiplier = 0.98f
+            },
             new LevelDefinition(7, "N-07", "Hive Trench", "TOO MANY HEARTBEATS",
                 "NAV CORE: Movement below us. Thousands of contacts. The beacon lies beyond the nest.",
                 "Brood Engine", 78f, 0.66f, 7717, BiomeId.HiveTrench, WavePattern.SwarmPulse,
-                CardPathPattern.StaggeredDrift, RouteShape.HiveRun, BossBehavior.Barrager),
+                CardPathPattern.StaggeredDrift, RouteShape.HiveRun, BossBehavior.Barrager)
+            {
+                OpeningDelaySeconds = 0.68f,
+                CardStartDelaySeconds = 3.0f,
+                CardIntervalMinSeconds = 6.8f,
+                CardIntervalMaxSeconds = 8.4f,
+                BossLeadSeconds = 15f,
+                DifficultyRamp = 0.30f,
+                WaveCadenceMultiplier = 0.76f
+            },
             new LevelDefinition(8, "N-08", "Night Shelf", "RESCUE WINDOW CLOSING",
                 "RESCUE: Unknown crew, your signal is fading. Reach open ground before orbital night locks us out.",
                 "Night Howler", 81f, 0.75f, 8803, BiomeId.NightShelf, WavePattern.Crossfire,
-                CardPathPattern.GentleDrift, RouteShape.NightSlope, BossBehavior.Howler),
+                CardPathPattern.GentleDrift, RouteShape.NightSlope, BossBehavior.Howler)
+            {
+                OpeningDelaySeconds = 1.05f,
+                CardStartDelaySeconds = 4.8f,
+                CardIntervalMinSeconds = 8.8f,
+                CardIntervalMaxSeconds = 11.5f,
+                BossLeadSeconds = 16f,
+                DifficultyRamp = 0.32f,
+                WaveCadenceMultiplier = 1.06f
+            },
             new LevelDefinition(9, "N-09", "Beacon Plain", "LIGHT THE SKY",
                 "CAPTAIN: We can see the beacon. One clean push and this world becomes somebody else's problem.",
                 "Signal Eater", 84f, 0.86f, 9901, BiomeId.BeaconPlain, WavePattern.SiegeMix,
-                CardPathPattern.WideSweep, RouteShape.BeaconApproach, BossBehavior.Striker),
+                CardPathPattern.WideSweep, RouteShape.BeaconApproach, BossBehavior.Striker)
+            {
+                OpeningDelaySeconds = 0.76f,
+                CardStartDelaySeconds = 3.8f,
+                CardIntervalMinSeconds = 9.0f,
+                CardIntervalMaxSeconds = 11.8f,
+                BossLeadSeconds = 16f,
+                DifficultyRamp = 0.35f,
+                WaveCadenceMultiplier = 1.02f
+            },
             new LevelDefinition(10, "N-10", "Extraction Ring", "GET US OFF NODNARB",
                 "RESCUE: Landing corridor is open for ninety seconds. Hold the ring. We leave together or not at all.",
                 "The Last Carrier", 90f, 1.00f, 10103, BiomeId.ExtractionRing, WavePattern.SiegeMix,
                 CardPathPattern.RailLock, RouteShape.ExtractionRing, BossBehavior.Carrier)
+            {
+                OpeningDelaySeconds = 0.90f,
+                CardStartDelaySeconds = 4.2f,
+                CardIntervalMinSeconds = 7.6f,
+                CardIntervalMaxSeconds = 9.4f,
+                BossLeadSeconds = 18f,
+                DifficultyRamp = 0.40f,
+                WaveCadenceMultiplier = 0.90f
+            }
         };
 
         private static readonly BossBehavior[] EndlessBossBehaviors =
@@ -182,7 +279,16 @@ namespace EscapeFromNodnarb
             return new LevelDefinition(0, "ENDLESS", "Dead Signal", "NO RESCUE VECTOR",
                 "NAV CORE: The beacon is gone. Count ammunition, keep the line, and make every second expensive.",
                 "Recurring Carrier", 0f, 0.72f, seed, BiomeId.NightShelf, WavePattern.SiegeMix,
-                CardPathPattern.WideSweep, RouteShape.NightSlope, BossBehavior.Carrier);
+                CardPathPattern.WideSweep, RouteShape.NightSlope, BossBehavior.Carrier)
+            {
+                OpeningDelaySeconds = 0.72f,
+                CardStartDelaySeconds = 3.6f,
+                CardIntervalMinSeconds = 7.2f,
+                CardIntervalMaxSeconds = 9.4f,
+                BossLeadSeconds = 12f,
+                DifficultyRamp = 0.28f,
+                WaveCadenceMultiplier = 0.94f
+            };
         }
 
         public static BossBehavior GetEndlessBossBehavior(int cycle)

@@ -36,6 +36,15 @@ namespace EscapeFromNodnarb.Tests
         }
 
         [Test]
+        public void CampaignAuthorsDistinctPacingWindows()
+        {
+            Assert.That(CampaignCatalog.All.Select(level => level.CardStartDelaySeconds).Distinct().Count(), Is.GreaterThanOrEqualTo(8));
+            Assert.That(CampaignCatalog.All.Select(level => level.WaveCadenceMultiplier).Distinct().Count(), Is.GreaterThanOrEqualTo(8));
+            Assert.That(CampaignCatalog.All.All(level => level.CardIntervalMinSeconds < level.CardIntervalMaxSeconds), Is.True);
+            Assert.That(CampaignCatalog.All.All(level => level.BossLeadSeconds < level.DurationSeconds), Is.True);
+        }
+
+        [Test]
         public void CampaignUsesConfirmedEscapeJourneyAndVariedRoutes()
         {
             Assert.That(CampaignCatalog.Get(1).Name, Does.Contain("Wreck"));

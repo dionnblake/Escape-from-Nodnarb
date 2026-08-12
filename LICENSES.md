@@ -6,6 +6,7 @@
 |---|---|---|
 | Game code and campaign text | Original project work | Included |
 | Procedural terrain, cards, projectiles, effects, and fallback meshes | Generated at runtime from Unity primitives and original code | Included |
+| Card-choice silhouettes and platform-neutral haptic bridge | Original project code; platform calls are limited to built-in Android/iOS handheld feedback when compiled for those targets | Included; no third-party SDK or asset |
 | Captain FBX, color atlas, and emission mask | Project-generated Blender handoff supplied for Escape from Nodnarb | Prototype inclusion; confirm commercial rights before release |
 | Rusher, Spitter, Blocker, Carrier, and CrewSoldier FBX assets | Generated locally by `blender escape from nodnarb/generate_enemy_assets.py` with Blender CLI | Project-generated; retain generator/source with the build |
 | CrashedEngine, SnowArch, RelayBeacon, CanyonDebris, CrystalCluster, HiveGrowth, RuinGate, HiveObelisk, and ExtractionBeacon FBX assets | Generated locally by `blender escape from nodnarb/nodnarb_world_props_blender.py` with Blender 5.2 CLI; current generator version `world-landmarks-v3` | Project-generated original geometry; retain generator/source and approve for commercial release |
