@@ -273,11 +273,11 @@ namespace EscapeFromNodnarb
             System.Random random = new System.Random(level.Seed ^ 0x484F525A);
             for (int index = 0; index < 5; index++)
             {
-                float z = 26.4f + Range(random, -0.45f, 0.45f);
-                float x = LaneRoute.CenterX(level.Route, z) + (index - 2.5f) * 3.0f + Range(random, -0.35f, 0.35f);
+                float z = 23.4f + Range(random, -0.45f, 0.45f);
+                float x = LaneRoute.CenterX(level.Route, z) + (index - 2.5f) * 3.4f + Range(random, -0.35f, 0.35f);
                 string asset = index % 3 == 0 ? "CrashBasinSpireA" : "CrashBasinCliff" + (char)('A' + index % 3);
                 PlaceCrashBasinAsset(asset, root.transform, new Vector3(x, -0.02f, z),
-                    Range(random, 0.66f, 0.92f), new Vector3(1.0f, Range(random, 0.92f, 1.18f), 1.0f),
+                    Range(random, 0.84f, 1.08f), new Vector3(1.0f, Range(random, 1.02f, 1.28f), 1.0f),
                     Range(random, -16f, 16f), palette, "DistantRidge_" + index.ToString("00"));
             }
         }
@@ -320,6 +320,7 @@ namespace EscapeFromNodnarb
                     LaneRoute.HeadingDegrees(level.Route, z) + side * Range(random, -24f, 24f), palette,
                     "CrashBasinFrame_" + index.ToString("00"));
             }
+
             PlaceCrashBasinAsset("CrashBasinRockArch", frame.transform,
                 new Vector3(LaneRoute.CenterX(level.Route, 20.5f), -0.02f, 20.5f), 0.78f,
                 new Vector3(1.0f, 0.86f, 1.0f), 0f, palette, "BiomeGateTop");
