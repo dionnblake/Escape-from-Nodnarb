@@ -98,22 +98,22 @@ namespace EscapeFromNodnarb
 
         private void BuildCrashBasinSignalBeacon(LevelDefinition level, BiomePalette palette)
         {
-            float z = 22.2f;
+            float z = 19.0f;
             float centerX = LaneRoute.CenterX(level.Route, z);
             PlaceCrashBasinAsset("CrashBasinSpireA", root.transform,
-                new Vector3(centerX - 1.55f, -0.02f, z + 0.35f), 0.82f,
-                new Vector3(1.0f, 1.28f, 1.0f), -12f, palette, "CrashBasinBeaconSpireL");
+                new Vector3(centerX - 1.55f, -0.02f, z + 0.35f), 0.94f,
+                new Vector3(1.0f, 1.34f, 1.0f), -12f, palette, "CrashBasinBeaconSpireL");
             PlaceCrashBasinAsset("CrashBasinSpireB", root.transform,
-                new Vector3(centerX + 1.45f, -0.02f, z + 0.55f), 0.70f,
-                new Vector3(1.0f, 1.16f, 1.0f), 14f, palette, "CrashBasinBeaconSpireR");
+                new Vector3(centerX + 1.45f, -0.02f, z + 0.55f), 0.82f,
+                new Vector3(1.0f, 1.22f, 1.0f), 14f, palette, "CrashBasinBeaconSpireR");
             PrimitiveFactory.Cylinder("CrashBasinBeaconMast", root.transform,
-                new Vector3(centerX, 3.05f, z), new Vector3(0.14f, 2.6f, 0.14f), GameTheme.SignalCyan);
+                new Vector3(centerX, 2.40f, z), new Vector3(0.16f, 2.0f, 0.16f), GameTheme.SignalCyan);
             PrimitiveFactory.Cube("CrashBasinBeaconArmL", root.transform,
-                new Vector3(centerX - 0.34f, 4.02f, z), new Vector3(0.62f, 0.07f, 0.07f), GameTheme.Signal);
+                new Vector3(centerX - 0.42f, 3.46f, z), new Vector3(0.76f, 0.08f, 0.08f), GameTheme.Signal);
             PrimitiveFactory.Cube("CrashBasinBeaconArmR", root.transform,
-                new Vector3(centerX + 0.34f, 4.02f, z), new Vector3(0.62f, 0.07f, 0.07f), GameTheme.Signal);
+                new Vector3(centerX + 0.42f, 3.46f, z), new Vector3(0.76f, 0.08f, 0.08f), GameTheme.Signal);
             PrimitiveFactory.Sphere("CrashBasinBeaconPulse", root.transform,
-                new Vector3(centerX, 4.68f, z), new Vector3(0.42f, 0.42f, 0.42f), GameTheme.SignalBright);
+                new Vector3(centerX, 4.12f, z), new Vector3(0.56f, 0.56f, 0.56f), GameTheme.SignalBright);
         }
 
         public void Clear()
