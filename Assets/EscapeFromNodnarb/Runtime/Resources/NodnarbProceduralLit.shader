@@ -7,6 +7,10 @@ Shader "EscapeFromNodnarb/ProceduralLit"
         _EmissionMap ("Emission Mask", 2D) = "black" {}
         _EmissionColor ("Emission", Color) = (0, 0, 0, 0)
         _EmissionStrength ("Emission Strength", Range(0, 4)) = 1
+        _ShadowColor ("Shadow Tint", Color) = (0.32, 0.24, 0.22, 1)
+        _DirectionalStrength ("Directional Shading", Range(0, 1)) = 0.82
+        _AmbientStrength ("Ambient Strength", Range(0, 1)) = 0.38
+        _VertexColorStrength ("Vertex Color Strength", Range(0, 1)) = 0
         _RimColor ("Rim Color", Color) = (0.12, 0.32, 0.20, 1)
         _RimPower ("Rim Power", Range(0.5, 6)) = 2.4
         _RimStrength ("Rim Strength", Range(0, 1)) = 0.12
@@ -40,6 +44,7 @@ Shader "EscapeFromNodnarb/ProceduralLit"
                 float4 vertex : POSITION;
                 float3 normal : NORMAL;
                 float2 uv : TEXCOORD0;
+                fixed4 color : COLOR;
             };
 
             struct v2f
@@ -49,6 +54,7 @@ Shader "EscapeFromNodnarb/ProceduralLit"
                 float2 uv : TEXCOORD0;
                 float3 worldNormal : TEXCOORD1;
                 float3 worldPosition : TEXCOORD2;
+                fixed4 vertexColor : COLOR;
                 SHADOW_COORDS(3)
                 UNITY_FOG_COORDS(4)
             };
@@ -59,6 +65,10 @@ Shader "EscapeFromNodnarb/ProceduralLit"
             sampler2D _EmissionMap;
             fixed4 _EmissionColor;
             half _EmissionStrength;
+            fixed4 _ShadowColor;
+            half _DirectionalStrength;
+            half _AmbientStrength;
+            half _VertexColorStrength;
             fixed4 _RimColor;
             half _RimPower;
             half _RimStrength;
@@ -74,6 +84,7 @@ Shader "EscapeFromNodnarb/ProceduralLit"
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 o.worldNormal = normalize(UnityObjectToWorldNormal(v.normal));
                 o.worldPosition = mul(unity_ObjectToWorld, v.vertex).xyz;
+                o.vertexColor = v.color;
                 TRANSFER_SHADOW(o);
                 UNITY_TRANSFER_FOG(o, o.vertex);
                 return o;
@@ -85,13 +96,16 @@ Shader "EscapeFromNodnarb/ProceduralLit"
                 float3 lightDirection = normalize(_WorldSpaceLightPos0.xyz);
                 float3 viewDirection = normalize(_WorldSpaceCameraPos.xyz - input.worldPosition);
                 half direct = saturate(dot(input.worldNormal, lightDirection));
-                half lighting = 0.38h + 0.62h * direct * attenuation;
                 fixed4 baseColor = tex2D(_MainTex, input.uv) * _Color;
+                baseColor.rgb *= lerp(fixed3(1, 1, 1), input.vertexColor.rgb, _VertexColorStrength);
+                half directional = saturate(direct * attenuation);
+                half lighting = saturate(_AmbientStrength + _DirectionalStrength * (0.24h + 0.76h * directional));
+                fixed3 shadowedBase = lerp(baseColor.rgb * _ShadowColor.rgb, baseColor.rgb, directional);
                 half rim = pow(1.0h - saturate(dot(input.worldNormal, viewDirection)), _RimPower) * _RimStrength;
                 half specular = pow(saturate(dot(reflect(-lightDirection, input.worldNormal), viewDirection)), 16.0h)
                     * _SpecularStrength * attenuation;
                 fixed3 emission = tex2D(_EmissionMap, input.uv).rgb * _EmissionColor.rgb * _EmissionStrength;
-                fixed3 surface = baseColor.rgb * lighting;
+                fixed3 surface = shadowedBase * lighting;
                 surface += _RimColor.rgb * rim;
                 surface += _SpecularColor.rgb * specular;
                 fixed4 color = fixed4(surface + emission, baseColor.a);

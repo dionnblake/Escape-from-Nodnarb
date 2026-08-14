@@ -39,6 +39,29 @@ namespace EscapeFromNodnarb.Tests
         }
 
         [Test]
+        public void UntexturedAuthoredMaterialsShareByVisualStyle()
+        {
+            Shader shader = Resources.Load<Shader>("NodnarbProceduralLit");
+            Material sourceA = new Material(shader) { color = GameTheme.CanyonRust };
+            Material sourceB = new Material(shader) { color = GameTheme.CanyonRust };
+            try
+            {
+                Material first = PrimitiveFactory.AuthoredMaterial(sourceA, GameTheme.CanyonRust,
+                    GameTheme.Void, GameTheme.SignalCyan, 0.08f);
+                Material second = PrimitiveFactory.AuthoredMaterial(sourceB, GameTheme.CanyonRust,
+                    GameTheme.Void, GameTheme.SignalCyan, 0.08f);
+
+                Assert.That(first, Is.SameAs(second));
+                Assert.That(first.enableInstancing, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(sourceA);
+                Object.DestroyImmediate(sourceB);
+            }
+        }
+
+        [Test]
         public void ProceduralShaderIsAvailableFromResources()
         {
             Shader shader = Resources.Load<Shader>("NodnarbProceduralLit");
@@ -51,6 +74,10 @@ namespace EscapeFromNodnarb.Tests
                 Assert.That(material.HasProperty("_MainTex"), Is.True);
                 Assert.That(material.HasProperty("_EmissionMap"), Is.True);
                 Assert.That(material.HasProperty("_EmissionColor"), Is.True);
+                Assert.That(material.HasProperty("_ShadowColor"), Is.True);
+                Assert.That(material.HasProperty("_DirectionalStrength"), Is.True);
+                Assert.That(material.HasProperty("_AmbientStrength"), Is.True);
+                Assert.That(material.HasProperty("_VertexColorStrength"), Is.True);
                 Assert.That(material.HasProperty("_RimColor"), Is.True);
                 Assert.That(material.HasProperty("_RimStrength"), Is.True);
                 Assert.That(material.FindPass("ForwardBase"), Is.GreaterThanOrEqualTo(0));
@@ -101,6 +128,36 @@ namespace EscapeFromNodnarb.Tests
 
                 Debug.Log("NODNARB_LANDMARK_BOUNDS name=" + names[index] + " renderers=" + renderers.Length + " center=" + bounds.center + " size=" + bounds.size);
                 Assert.That(bounds.size.y, Is.GreaterThan(0.4f), names[index] + " has an unreadable height");
+            }
+        }
+
+        [Test]
+        public void CrashBasinAuthoredKitIsAvailableFromResources()
+        {
+            string[] names =
+            {
+                "CrashBasinRockA", "CrashBasinRockB", "CrashBasinRockC",
+                "CrashBasinCliffA", "CrashBasinCliffB", "CrashBasinCliffC",
+                "CrashBasinSpireA", "CrashBasinSpireB",
+                "CrashBasinGroundA", "CrashBasinGroundB",
+                "CrashBasinWreckA", "CrashBasinWreckB",
+                "CrashBasinRockArch", "CrashBasinFloraA", "CrashBasinFloraB"
+            };
+            for (int index = 0; index < names.Length; index++)
+            {
+                GameObject prefab = Resources.Load<GameObject>("World/" + names[index]);
+                Assert.That(prefab, Is.Not.Null, names[index] + " resource missing");
+                Renderer[] renderers = prefab.GetComponentsInChildren<Renderer>(true);
+                Assert.That(renderers.Length, Is.GreaterThan(0), names[index] + " has no renderers");
+                Bounds bounds = renderers[0].bounds;
+                for (int rendererIndex = 1; rendererIndex < renderers.Length; rendererIndex++)
+                {
+                    bounds.Encapsulate(renderers[rendererIndex].bounds);
+                }
+
+                Assert.That(bounds.size.y, Is.GreaterThan(0.05f), names[index] + " has no readable vertical silhouette");
+                Assert.That(bounds.size.x, Is.LessThan(8f), names[index] + " exceeds the mobile kit footprint");
+                Debug.Log("NODNARB_CRASH_BASIN_ASSET name=" + names[index] + " renderers=" + renderers.Length + " bounds=" + bounds.size);
             }
         }
     }

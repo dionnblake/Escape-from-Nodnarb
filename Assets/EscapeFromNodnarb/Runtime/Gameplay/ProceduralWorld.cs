@@ -30,23 +30,45 @@ namespace EscapeFromNodnarb
             camera.backgroundColor = palette.Sky;
             camera.clearFlags = CameraClearFlags.SolidColor;
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = Color.Lerp(palette.Terrain, GameTheme.Text, 0.22f);
+            RenderSettings.ambientLight = level.Index == 2
+                ? Color.Lerp(palette.Terrain, GameTheme.CanyonHighlight, 0.18f)
+                : Color.Lerp(palette.Terrain, GameTheme.Text, 0.22f);
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogColor = palette.Sky;
-            RenderSettings.fogStartDistance = 18f;
-            RenderSettings.fogEndDistance = 38f;
+            RenderSettings.fogColor = level.Index == 2 ? Color.Lerp(palette.Sky, GameTheme.Void, 0.12f) : palette.Sky;
+            RenderSettings.fogStartDistance = level.Index == 2 ? 14f : 18f;
+            RenderSettings.fogEndDistance = level.Index == 2 ? 34f : 38f;
 
-            BuildGroundBed(level, palette);
-            BuildLane(level, palette);
+            bool crashBasin = level.Index == 2;
+            if (crashBasin)
+            {
+                BuildCrashBasinGround(level, palette);
+            }
+            else
+            {
+                BuildGroundBed(level, palette);
+                BuildLane(level, palette);
+            }
+
             BuildRouteCenterline(level, palette);
             BuildRouteSignature(level, palette);
-            BuildCanyonWalls(level, palette);
-            BuildHorizon(level, palette);
-            BuildEnvironmentIdentity(level, palette);
-            BuildBiomeFraming(level, palette);
-            BuildNearFieldIdentity(level, palette);
-            BuildTerrain(level, palette);
+            if (crashBasin)
+            {
+                BuildCrashBasinCliffs(level, palette);
+                BuildCrashBasinHorizon(level, palette);
+                BuildCrashBasinEnvironmentIdentity(level, palette);
+                BuildCrashBasinBiomeFraming(level, palette);
+                BuildCrashBasinNearField(level, palette);
+            }
+            else
+            {
+                BuildCanyonWalls(level, palette);
+                BuildHorizon(level, palette);
+                BuildEnvironmentIdentity(level, palette);
+                BuildBiomeFraming(level, palette);
+                BuildNearFieldIdentity(level, palette);
+                BuildTerrain(level, palette);
+            }
             if (level.Biome == BiomeId.Snowline)
             {
                 BuildSnowlineAccents(level, palette);
@@ -117,6 +139,141 @@ namespace EscapeFromNodnarb
                 + " materials=" + RuntimeMaterialCount
                 + " cached_materials=" + PrimitiveFactory.MaterialCacheCount;
             Debug.Log(LastVisualBudgetReport);
+        }
+
+        private void BuildCrashBasinGround(LevelDefinition level, BiomePalette palette)
+        {
+            System.Random random = new System.Random(level.Seed ^ 0x43524153);
+            for (int segment = 0; segment < 10; segment++)
+            {
+                float z = -4.5f + segment * 2.45f + Range(random, -0.24f, 0.24f);
+                float centerX = LaneRoute.CenterX(level.Route, z) + Range(random, -0.12f, 0.12f);
+                string asset = segment % 2 == 0 ? "CrashBasinGroundA" : "CrashBasinGroundB";
+                string name = segment == 0 ? "AlienGroundPatch" : segment == 1 ? "AlienGroundCrust" : "CrashBasinGround_" + segment.ToString("00");
+                PlaceCrashBasinAsset(asset, root.transform, new Vector3(centerX, -0.02f, z),
+                    Range(random, 0.94f, 1.12f), new Vector3(Range(random, 1.10f, 1.38f), 1f, Range(random, 0.88f, 1.16f)),
+                    LaneRoute.HeadingDegrees(level.Route, z) + Range(random, -12f, 12f), palette, name);
+
+                if (segment % 6 == 0)
+                {
+                    PlaceCrashBasinAsset(segment % 2 == 0 ? "CrashBasinWreckA" : "CrashBasinWreckB", root.transform,
+                        new Vector3(centerX + Range(random, -2.7f, 2.7f), 0f, z + Range(random, -0.55f, 0.55f)),
+                        Range(random, 0.36f, 0.52f), new Vector3(1.0f, 1.0f, 1.0f),
+                        Range(random, -28f, 28f), palette, "CrashBasinDebris_" + segment.ToString("00"));
+                }
+            }
+        }
+
+        private void BuildCrashBasinCliffs(LevelDefinition level, BiomePalette palette)
+        {
+            System.Random random = new System.Random(level.Seed ^ 0x434C4946);
+            for (int segment = 0; segment < 8; segment++)
+            {
+                float z = -3.5f + segment * 3.10f;
+                for (int sideIndex = 0; sideIndex < 2; sideIndex++)
+                {
+                    float side = sideIndex == 0 ? -1f : 1f;
+                    float x = LaneRoute.CenterX(level.Route, z) + side * Range(random, 5.35f, 6.15f);
+                    string asset = "CrashBasinCliff" + (char)('A' + (segment + sideIndex) % 3);
+                    PlaceCrashBasinAsset(asset, root.transform,
+                        new Vector3(x, -0.02f, z + Range(random, -0.38f, 0.38f)),
+                        Range(random, 0.72f, 1.04f), new Vector3(Range(random, 0.82f, 1.18f), Range(random, 0.92f, 1.24f), Range(random, 0.88f, 1.16f)),
+                        LaneRoute.HeadingDegrees(level.Route, z) + side * Range(random, 8f, 24f), palette,
+                        "CanyonWall_" + segment.ToString("00") + (sideIndex == 0 ? "_L" : "_R"));
+                }
+            }
+        }
+
+        private void BuildCrashBasinHorizon(LevelDefinition level, BiomePalette palette)
+        {
+            System.Random random = new System.Random(level.Seed ^ 0x484F525A);
+            for (int index = 0; index < 5; index++)
+            {
+                float z = 26.4f + Range(random, -0.45f, 0.45f);
+                float x = LaneRoute.CenterX(level.Route, z) + (index - 2.5f) * 3.0f + Range(random, -0.35f, 0.35f);
+                string asset = index % 3 == 0 ? "CrashBasinSpireA" : "CrashBasinCliff" + (char)('A' + index % 3);
+                PlaceCrashBasinAsset(asset, root.transform, new Vector3(x, -0.02f, z),
+                    Range(random, 0.66f, 0.92f), new Vector3(1.0f, Range(random, 0.92f, 1.18f), 1.0f),
+                    Range(random, -16f, 16f), palette, "DistantRidge_" + index.ToString("00"));
+            }
+        }
+
+        private void BuildCrashBasinEnvironmentIdentity(LevelDefinition level, BiomePalette palette)
+        {
+            GameObject identity = new GameObject("EnvironmentIdentity_02");
+            identity.transform.SetParent(root.transform, false);
+            for (int index = 0; index < 3; index++)
+            {
+                float z = 5.3f + index * 5.9f;
+                float side = index % 2 == 0 ? -1f : 1f;
+                Vector3 position = new Vector3(LaneRoute.CenterX(level.Route, z) + side * 4.45f, -0.02f, z);
+                PlaceCrashBasinAsset(index % 2 == 0 ? "CrashBasinSpireA" : "CrashBasinSpireB", identity.transform,
+                    position, 0.76f + index * 0.08f, new Vector3(1.0f, 1.0f + index * 0.08f, 1.0f),
+                    side * (12f + index * 8f), palette, "CanyonSpire_" + index.ToString("00"));
+                PlaceCrashBasinAsset("CrashBasinRock" + (char)('A' + index % 3), identity.transform,
+                    position + new Vector3(-side * 0.86f, 0f, -0.42f), 0.46f, new Vector3(1.0f, 0.72f, 1.0f),
+                    side * 22f, palette, "CanyonSpireBase_" + index.ToString("00"));
+            }
+            PlaceCrashBasinAsset("CrashBasinRockArch", identity.transform,
+                new Vector3(LaneRoute.CenterX(level.Route, 17.8f), -0.02f, 17.8f), 0.54f,
+                new Vector3(1.0f, 0.82f, 1.0f), 0f, palette, "CanyonBasinArch");
+        }
+
+        private void BuildCrashBasinBiomeFraming(LevelDefinition level, BiomePalette palette)
+        {
+            GameObject frame = new GameObject("BiomeFrame_02");
+            frame.transform.SetParent(root.transform, false);
+            System.Random random = new System.Random(level.Seed ^ 0x4652414D);
+            for (int index = 0; index < 17; index++)
+            {
+                float z = 1.1f + (index % 6) * 4.0f + (index / 6) * 0.55f;
+                float side = index % 2 == 0 ? -1f : 1f;
+                float centerX = LaneRoute.CenterX(level.Route, z);
+                string asset = index % 5 == 0 ? "CrashBasinFloraA" : index % 5 == 1 ? "CrashBasinWreckB" : "CrashBasinRock" + (char)('A' + index % 3);
+                PlaceCrashBasinAsset(asset, frame.transform,
+                    new Vector3(centerX + side * Range(random, 4.15f, 4.82f), -0.02f, z),
+                    Range(random, 0.40f, 0.62f), new Vector3(1.0f, Range(random, 0.86f, 1.14f), 1.0f),
+                    LaneRoute.HeadingDegrees(level.Route, z) + side * Range(random, -24f, 24f), palette,
+                    "CrashBasinFrame_" + index.ToString("00"));
+            }
+            PlaceCrashBasinAsset("CrashBasinRockArch", frame.transform,
+                new Vector3(LaneRoute.CenterX(level.Route, 20.5f), -0.02f, 20.5f), 0.78f,
+                new Vector3(1.0f, 0.86f, 1.0f), 0f, palette, "BiomeGateTop");
+        }
+
+        private void BuildCrashBasinNearField(LevelDefinition level, BiomePalette palette)
+        {
+            GameObject anchors = new GameObject("NearFieldIdentity_02");
+            anchors.transform.SetParent(root.transform, false);
+            for (int index = 0; index < 6; index++)
+            {
+                float z = -0.15f + index * 1.35f;
+                float side = index % 2 == 0 ? -1f : 1f;
+                string asset = index % 3 == 0 ? "CrashBasinRockA" : index % 3 == 1 ? "CrashBasinFloraB" : "CrashBasinWreckA";
+                PlaceCrashBasinAsset(asset, anchors.transform,
+                    new Vector3(LaneRoute.CenterX(level.Route, z) + side * 3.86f, -0.02f, z),
+                    0.36f + index * 0.038f, new Vector3(1.0f, 1.04f, 1.0f), side * (12f + index * 6f), palette,
+                    "NearFieldCrashBasin_" + index.ToString("00"));
+            }
+        }
+
+        private GameObject PlaceCrashBasinAsset(string resourceName, Transform parent, Vector3 position, float scale,
+            Vector3 stretch, float yaw, BiomePalette palette, string name)
+        {
+            if (!TryBuildImportedLandmark(resourceName, position, scale, palette, true, name, parent))
+            {
+                return null;
+            }
+
+            Transform placed = parent.Find(name);
+            if (placed == null)
+            {
+                return null;
+            }
+
+            placed.localScale = Vector3.Scale(placed.localScale, stretch);
+            placed.localRotation = Quaternion.Euler(0f, yaw, 0f);
+            return placed.gameObject;
         }
 
         private void BuildTerrain(LevelDefinition level, BiomePalette palette)
@@ -811,7 +968,8 @@ namespace EscapeFromNodnarb
                 new Vector3(0.7f, 1.2f, 0.7f), GameTheme.Signal);
         }
 
-        private bool TryBuildImportedLandmark(string resourceName, Vector3 position, float scale, BiomePalette palette)
+        private bool TryBuildImportedLandmark(string resourceName, Vector3 position, float scale, BiomePalette palette,
+            bool stylized = false, string overrideName = null, Transform parent = null)
         {
             GameObject prefab = Resources.Load<GameObject>("World/" + resourceName);
             if (prefab == null)
@@ -819,8 +977,9 @@ namespace EscapeFromNodnarb
                 return false;
             }
 
-            GameObject landmark = UnityEngine.Object.Instantiate(prefab, root.transform);
-            landmark.name = resourceName + "Landmark";
+            Transform targetParent = parent == null ? root.transform : parent;
+            GameObject landmark = UnityEngine.Object.Instantiate(prefab, targetParent);
+            landmark.name = string.IsNullOrEmpty(overrideName) ? resourceName + "Landmark" : overrideName;
             landmark.transform.localPosition = position;
             landmark.transform.localRotation = Quaternion.Euler(0f, position.z * 7f, 0f);
             // Blender exports these world props in centimetre file units. Unity's
@@ -853,16 +1012,24 @@ namespace EscapeFromNodnarb
                 for (int materialIndex = 0; materialIndex < sourceMaterials.Length; materialIndex++)
                 {
                     Material sourceMaterial = sourceMaterials[materialIndex];
-                    if (sourceMaterial != null)
+                    string materialName = sourceMaterial == null ? string.Empty : sourceMaterial.name;
+                    Color materialColor = LandmarkColor(resourceName, materialName, palette);
+                    if (sourceMaterial != null && stylized)
                     {
-                        // Preserve authored FBX materials. Replacing them with a flat
-                        // runtime color discards texture, emission, and surface response.
-                        runtimeMaterials[materialIndex] = sourceMaterial;
-                        continue;
+                        runtimeMaterials[materialIndex] = PrimitiveFactory.AuthoredMaterial(
+                            sourceMaterial, materialColor, Color.Lerp(palette.Sky, GameTheme.Void, 0.58f),
+                            Color.Lerp(materialColor, GameTheme.SignalCyan, 0.22f),
+                            materialName.ToLowerInvariant().Contains("signal") || materialName.ToLowerInvariant().Contains("accent") ? 0.30f : 0.08f);
                     }
-
-                    runtimeMaterials[materialIndex] = PrimitiveFactory.Material(
-                        LandmarkColor(resourceName, string.Empty, palette));
+                    else if (sourceMaterial != null)
+                    {
+                        // Preserve authored FBX materials for legacy landmarks.
+                        runtimeMaterials[materialIndex] = sourceMaterial;
+                    }
+                    else
+                    {
+                        runtimeMaterials[materialIndex] = PrimitiveFactory.Material(materialColor);
+                    }
                 }
 
                 renderer.sharedMaterials = runtimeMaterials;
@@ -907,7 +1074,22 @@ namespace EscapeFromNodnarb
             string name = materialName.ToLowerInvariant();
             if (name.Contains("signal"))
             {
-                return GameTheme.SignalBright;
+                return name.Contains("crashsignal") ? GameTheme.SignalCyan : GameTheme.SignalBright;
+            }
+
+            if (name.Contains("crashaccent"))
+            {
+                return GameTheme.CanyonHighlight;
+            }
+
+            if (name.Contains("crashorganic"))
+            {
+                return Color.Lerp(palette.Terrain, GameTheme.Signal, 0.24f);
+            }
+
+            if (name.Contains("shadow") || name.Contains("dark"))
+            {
+                return Color.Lerp(palette.Sky, GameTheme.Void, 0.56f);
             }
 
             if (name.Contains("snow"))
@@ -962,10 +1144,11 @@ namespace EscapeFromNodnarb
     public static class PrimitiveFactory
     {
         private static readonly Dictionary<int, Material> Materials = new Dictionary<int, Material>();
+        private static readonly Dictionary<string, Material> AuthoredMaterials = new Dictionary<string, Material>();
 
         public static int MaterialCacheCount
         {
-            get { return Materials.Count; }
+            get { return Materials.Count + AuthoredMaterials.Count; }
         }
 
         public static GameObject Cube(string name, Transform parent, Vector3 position, Vector3 scale, Color color)
@@ -1014,6 +1197,9 @@ namespace EscapeFromNodnarb
             material.SetColor("_RimColor", Color.Lerp(color, GameTheme.Signal, 0.22f));
             material.SetFloat("_RimPower", 2.4f);
             material.SetFloat("_RimStrength", 0.18f);
+            material.SetColor("_ShadowColor", Color.Lerp(GameTheme.Void, color, 0.42f));
+            material.SetFloat("_DirectionalStrength", 0.82f);
+            material.SetFloat("_AmbientStrength", 0.38f);
             material.SetColor("_SpecularColor", Color.Lerp(Color.white, color, 0.34f));
             material.SetFloat("_SpecularStrength", 0.09f);
 
@@ -1023,6 +1209,72 @@ namespace EscapeFromNodnarb
             material.SetFloat("_EmissionStrength", signalLike || hostileLike ? 0.22f : 0f);
             Materials[key] = material;
             return material;
+        }
+
+        public static Material AuthoredMaterial(Material source, Color tint, Color shadowColor, Color rimColor,
+            float emissionStrength)
+        {
+            Texture mainTexture = source != null && source.HasProperty("_MainTex") ? source.GetTexture("_MainTex") : null;
+            Texture emissionTexture = source != null && source.HasProperty("_EmissionMap") ? source.GetTexture("_EmissionMap") : null;
+            bool hasTexture = (mainTexture != null && mainTexture != Texture2D.whiteTexture)
+                || (emissionTexture != null && emissionTexture != Texture2D.blackTexture);
+            Color32 tintKey = tint;
+            Color32 shadowKey = shadowColor;
+            Color32 rimKey = rimColor;
+            string key = (hasTexture && source != null ? source.GetInstanceID() : 0).ToString()
+                + "_" + ((int)tintKey.r | (int)tintKey.g << 8 | (int)tintKey.b << 16).ToString("X6")
+                + "_" + ((int)shadowKey.r | (int)shadowKey.g << 8 | (int)shadowKey.b << 16).ToString("X6")
+                + "_" + ((int)rimKey.r | (int)rimKey.g << 8 | (int)rimKey.b << 16).ToString("X6")
+                + "_" + emissionStrength.ToString("0.00");
+            Material material;
+            if (AuthoredMaterials.TryGetValue(key, out material) && material != null)
+            {
+                return material;
+            }
+
+            Shader shader = Resources.Load<Shader>("NodnarbProceduralLit");
+            if (shader == null)
+            {
+                shader = Shader.Find("EscapeFromNodnarb/ProceduralLit");
+            }
+
+            if (shader == null)
+            {
+                throw new System.InvalidOperationException("Nodnarb procedural shader was not included in the player build.");
+            }
+
+            material = source == null ? new Material(shader) : new Material(source);
+            material.shader = shader;
+            material.name = "CrashBasin_" + key;
+            material.enableInstancing = true;
+            material.color = source != null && source.HasProperty("_Color")
+                ? Multiply(source.color, tint)
+                : tint;
+            if (mainTexture != null)
+            {
+                material.SetTexture("_MainTex", mainTexture);
+            }
+            if (emissionTexture != null)
+            {
+                material.SetTexture("_EmissionMap", emissionTexture);
+            }
+            material.SetColor("_ShadowColor", shadowColor);
+            material.SetFloat("_DirectionalStrength", 0.88f);
+            material.SetFloat("_AmbientStrength", 0.34f);
+            material.SetColor("_RimColor", rimColor);
+            material.SetFloat("_RimPower", 2.2f);
+            material.SetFloat("_RimStrength", 0.16f);
+            material.SetColor("_SpecularColor", Color.Lerp(Color.white, tint, 0.42f));
+            material.SetFloat("_SpecularStrength", 0.06f);
+            material.SetColor("_EmissionColor", Color.Lerp(tint, rimColor, 0.24f));
+            material.SetFloat("_EmissionStrength", emissionStrength);
+            AuthoredMaterials[key] = material;
+            return material;
+        }
+
+        private static Color Multiply(Color left, Color right)
+        {
+            return new Color(left.r * right.r, left.g * right.g, left.b * right.b, left.a * right.a);
         }
 
         private static GameObject Primitive(PrimitiveType type, string name, Transform parent, Vector3 position, Vector3 scale, Color color)

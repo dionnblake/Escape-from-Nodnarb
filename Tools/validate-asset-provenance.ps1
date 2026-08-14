@@ -34,6 +34,7 @@ $requiredInventoryRows = @(
     "Captain FBX, color atlas, and emission mask",
     "Rusher, Spitter, Blocker, Carrier, and CrewSoldier FBX assets",
     "CrashedEngine, SnowArch, RelayBeacon, CanyonDebris, CrystalCluster, HiveGrowth, SporeArch, RuinGate, HiveObelisk, and ExtractionBeacon FBX assets",
+    "Crash Basin authored low-poly FBX kit",
     "Runtime/Resources/Art/title-screen.png",
     "Runtime UI fallback font"
 )
