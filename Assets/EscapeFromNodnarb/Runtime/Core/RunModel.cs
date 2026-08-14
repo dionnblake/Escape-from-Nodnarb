@@ -23,6 +23,8 @@ namespace EscapeFromNodnarb
         public const float OverflowDamageStep = 0.08f;
         public const float WeaponUpgradeRateStep = 0.12f;
         public const float OverflowRateStep = 0.025f;
+        public const int MaxWeaponLevel = 64;
+        public const int MaxOverflowRecruits = 64;
 
         public float CaptainHealth { get; private set; }
         public int SoldierCount { get; private set; }
@@ -33,6 +35,7 @@ namespace EscapeFromNodnarb
         public int Salvage { get; private set; }
         public float RapidFireRemaining { get; private set; }
         public float RapidFireCooldownRemaining { get; private set; }
+        public bool ComebackAssistUsed { get; private set; }
         public int SelectedWeapon { get; private set; }
         public RunEndReason EndReason { get; private set; }
 
@@ -56,6 +59,22 @@ namespace EscapeFromNodnarb
         public bool RapidFireReady
         {
             get { return !IsEnded && RapidFireCooldownRemaining <= 0f; }
+        }
+
+        public bool ComebackActive
+        {
+            get { return !IsEnded && CaptainHealth <= 35f; }
+        }
+
+        public bool TryConsumeComebackAssist()
+        {
+            if (!ComebackActive || ComebackAssistUsed)
+            {
+                return false;
+            }
+
+            ComebackAssistUsed = true;
+            return true;
         }
 
         public int VisibleShooterCount
@@ -145,13 +164,13 @@ namespace EscapeFromNodnarb
             }
             else
             {
-                OverflowRecruits++;
+                OverflowRecruits = Math.Min(MaxOverflowRecruits, OverflowRecruits + 1);
             }
         }
 
         public void UpgradeWeapon()
         {
-            if (!IsEnded)
+            if (!IsEnded && WeaponLevel < MaxWeaponLevel)
             {
                 WeaponLevel++;
             }
@@ -191,6 +210,49 @@ namespace EscapeFromNodnarb
             {
                 EndReason = RunEndReason.ExtractionSecured;
             }
+        }
+
+        public PausedRunData CreateSnapshot(int levelIndex, bool endless, float elapsed)
+        {
+            return new PausedRunData
+            {
+                LevelIndex = levelIndex,
+                Endless = endless,
+                Elapsed = Math.Max(0f, elapsed),
+                CaptainHealth = CaptainHealth,
+                SoldierCount = SoldierCount,
+                OverflowRecruits = OverflowRecruits,
+                WeaponLevel = WeaponLevel,
+                SelectedWeapon = SelectedWeapon,
+                Score = Score,
+                Kills = Kills,
+                Salvage = Salvage,
+                RapidFireRemaining = RapidFireRemaining,
+                RapidFireCooldownRemaining = RapidFireCooldownRemaining,
+                ComebackAssistUsed = ComebackAssistUsed
+            };
+        }
+
+        public bool Restore(PausedRunData snapshot)
+        {
+            if (snapshot == null || !snapshot.IsValid())
+            {
+                return false;
+            }
+
+            CaptainHealth = Math.Max(0f, Math.Min(MaxCaptainHealth, snapshot.CaptainHealth));
+            SoldierCount = Math.Max(0, Math.Min(VisibleSoldierCap, snapshot.SoldierCount));
+            OverflowRecruits = Math.Max(0, Math.Min(MaxOverflowRecruits, snapshot.OverflowRecruits));
+            WeaponLevel = Math.Max(0, Math.Min(MaxWeaponLevel, snapshot.WeaponLevel));
+            SelectedWeapon = LoadoutCatalog.ClampWeapon(snapshot.SelectedWeapon);
+            Score = Math.Max(0, snapshot.Score);
+            Kills = Math.Max(0, snapshot.Kills);
+            Salvage = Math.Max(0, snapshot.Salvage);
+            RapidFireRemaining = Math.Max(0f, snapshot.RapidFireRemaining);
+            RapidFireCooldownRemaining = Math.Max(0f, snapshot.RapidFireCooldownRemaining);
+            ComebackAssistUsed = snapshot.ComebackAssistUsed;
+            EndReason = RunEndReason.None;
+            return true;
         }
     }
 }

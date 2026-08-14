@@ -6,18 +6,46 @@ namespace EscapeFromNodnarb
 {
     public sealed class CaptainSquad
     {
+        private sealed class SoldierMotionParts
+        {
+            public Transform LeftLeg;
+            public Transform RightLeg;
+            public Transform LeftArm;
+            public Transform RightArm;
+            public Quaternion LeftLegBaseRotation;
+            public Quaternion RightLegBaseRotation;
+            public Quaternion LeftArmBaseRotation;
+            public Quaternion RightArmBaseRotation;
+
+            public bool HasParts
+            {
+                get { return LeftLeg != null || RightLeg != null || LeftArm != null || RightArm != null; }
+            }
+        }
+
         private const string CaptainPrefabResourcePath = "Captain/CaptainVisual";
         private const string CaptainSourceResourcePath = "Captain/Captain_Unity";
-        // Keep the squad subordinate to the incoming horde while preserving a
-        // readable leader silhouette on portrait screens.
+        // Keep the captain nearest the incoming horde and the crew trailing
+        // toward the camera while preserving a readable portrait silhouette.
         private const float ImportedCaptainVisualScale = 0.82f;
         private const float ImportedSoldierVisualScale = 1.12f;
-        private const float CaptainLocalZOffset = 0.45f;
-        private const float CrewFirstRowZOffset = 1.35f;
+        private const float CaptainLocalZOffset = 1.35f;
+        private const float CrewFirstRowZOffset = 0.80f;
         private const float CrewRowZSpacing = 0.82f;
+        private const float MotionLeanDegreesPerSpeed = 1.25f;
+        private const float MotionMaxLeanDegrees = 8f;
+        private const float MotionBobAmplitude = 0.035f;
+        private const float MotionBobPhasePerSpeed = 4.2f;
+        private const float MotionStartSpeed = 0.08f;
+        private const float MotionFullSpeed = 0.65f;
+        private const float MotionBlendSpeed = 16f;
+        private const float MotionPhaseOffset = 0.52f;
         private readonly Transform owner;
         private readonly List<Transform> soldiers = new List<Transform>();
         private readonly List<Vector3> soldierBaseScales = new List<Vector3>();
+        private readonly List<Vector3> soldierBasePositions = new List<Vector3>();
+        private readonly List<Quaternion> soldierBaseRotations = new List<Quaternion>();
+        private readonly List<SoldierMotionParts> soldierMotionParts = new List<SoldierMotionParts>();
         private readonly List<Transform> muzzles = new List<Transform>();
         private readonly List<Transform> muzzleFlashes = new List<Transform>();
         private readonly List<Vector3> muzzleFlashBaseScales = new List<Vector3>();
@@ -25,14 +53,23 @@ namespace EscapeFromNodnarb
         private Transform captain;
         private Transform captainMuzzle;
         private Vector3 captainBaseScale = Vector3.one;
+        private Vector3 captainBasePosition;
+        private Quaternion captainBaseRotation = Quaternion.identity;
         private readonly MaterialPropertyBlock captainDamageBlock = new MaterialPropertyBlock();
+        private readonly MaterialPropertyBlock muzzleAccessibilityBlock = new MaterialPropertyBlock();
         private float targetX;
         private float routeCenterX;
         private bool dragging;
         private Vector2 lastPointer;
+        private int activeTouchId = -1;
         private int builtSoldierCount = -1;
         private int suitIndex;
         private float muzzleFlashTimer;
+        private float lastRootX;
+        private float motionVelocityX;
+        private float motionPhase;
+
+        public bool AccessibilityVisualApplied { get; private set; }
 
         public CaptainSquad(Transform ownerTransform)
         {
@@ -49,9 +86,14 @@ namespace EscapeFromNodnarb
             get { return root == null ? 0f : root.transform.position.x - routeCenterX; }
         }
 
+        public float TargetRelativeX
+        {
+            get { return targetX; }
+        }
+
         public Vector3 CaptainPosition
         {
-            get { return captain == null ? new Vector3(0f, 0.8f, GameTheme.CaptainZ) : captain.position; }
+            get { return captain == null ? new Vector3(0f, 0.8f, GameTheme.CaptainZ + CaptainLocalZOffset) : captain.position; }
         }
 
         public int VisibleSoldierCount
@@ -62,6 +104,11 @@ namespace EscapeFromNodnarb
         public int ShooterCount
         {
             get { return (captainMuzzle == null ? 0 : 1) + muzzles.Count; }
+        }
+
+        public bool IsDragging
+        {
+            get { return dragging; }
         }
 
         public void Build(RunModel model, int selectedSuit)
@@ -75,23 +122,63 @@ namespace EscapeFromNodnarb
             routeCenterX = 0f;
             captain = BuildUnit("Captain", root.transform, new Vector3(0f, 0f, GameTheme.CaptainZ + CaptainLocalZOffset), 1f, GameTheme.SuitColor(suitIndex), true);
             captainBaseScale = captain.localScale;
+            captainBasePosition = captain.localPosition;
+            captainBaseRotation = captain.localRotation;
             captainMuzzle = captain.Find("Muzzle");
             RegisterMuzzleFlash(captainMuzzle);
+            lastRootX = root.transform.position.x;
+            motionVelocityX = 0f;
+            motionPhase = 0f;
             Refresh(model.SoldierCount);
+            ApplyAccessibilitySettings();
+        }
+
+        public void RestoreRelativePosition(float relativeX, float targetRelativeX, float currentRouteCenterX)
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+            float maxOffset = GameTheme.ArenaHalfWidth - 0.35f;
+            float safeRelativeX = float.IsNaN(relativeX) || float.IsInfinity(relativeX)
+                ? 0f
+                : Mathf.Clamp(relativeX, -maxOffset, maxOffset);
+            float safeTargetX = float.IsNaN(targetRelativeX) || float.IsInfinity(targetRelativeX)
+                ? 0f
+                : Mathf.Clamp(targetRelativeX, -maxOffset, maxOffset);
+            routeCenterX = currentRouteCenterX;
+            targetX = safeTargetX;
+            Vector3 position = root.transform.position;
+            position.x = routeCenterX + safeRelativeX;
+            root.transform.position = position;
+            lastRootX = position.x;
+            motionVelocityX = 0f;
+            dragging = false;
+            activeTouchId = -1;
         }
 
         public void Clear()
         {
             soldiers.Clear();
             soldierBaseScales.Clear();
+            soldierBasePositions.Clear();
+            soldierBaseRotations.Clear();
+            soldierMotionParts.Clear();
             muzzles.Clear();
             muzzleFlashes.Clear();
             muzzleFlashBaseScales.Clear();
             captain = null;
             captainMuzzle = null;
             captainBaseScale = Vector3.one;
+            captainBasePosition = Vector3.zero;
+            captainBaseRotation = Quaternion.identity;
             builtSoldierCount = -1;
             muzzleFlashTimer = 0f;
+            lastRootX = 0f;
+            motionVelocityX = 0f;
+            motionPhase = 0f;
+            activeTouchId = -1;
             if (root != null)
             {
                 Object.Destroy(root);
@@ -102,20 +189,18 @@ namespace EscapeFromNodnarb
         public void TickInput(float deltaTime, bool blocked, float currentRouteCenterX)
         {
             UpdateMuzzleFlashes(deltaTime);
-            if (root == null || blocked)
+            if (root == null)
             {
                 dragging = false;
                 return;
             }
 
-            if (captain != null)
+            if (blocked)
             {
-                captain.localScale = Vector3.Lerp(captain.localScale, captainBaseScale, 1f - Mathf.Exp(-18f * deltaTime));
-            }
-
-            for (int i = 0; i < soldiers.Count; i++)
-            {
-                soldiers[i].localScale = Vector3.Lerp(soldiers[i].localScale, soldierBaseScales[i], 1f - Mathf.Exp(-18f * deltaTime));
+                dragging = false;
+                lastRootX = root.transform.position.x;
+                UpdateUnitMotion(deltaTime, 0f);
+                return;
             }
 
             float keyboard = Input.GetAxisRaw("Horizontal");
@@ -126,27 +211,38 @@ namespace EscapeFromNodnarb
 
             if (Input.touchCount > 0)
             {
-                Touch touch = Input.GetTouch(0);
-                bool overBottomAction = touch.position.y < Screen.height * 0.16f;
-                if (touch.phase == TouchPhase.Began)
+                Touch touch;
+                if (TryGetActiveTouch(out touch))
                 {
-                    dragging = !overBottomAction && !IsPointerOverUi(touch.fingerId);
-                    lastPointer = touch.position;
-                }
-                else if (dragging && (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary))
-                {
-                    MoveByScreenDelta(touch.position - lastPointer);
-                    lastPointer = touch.position;
-                }
-                else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
-                {
-                    dragging = false;
+                    if (touch.phase == TouchPhase.Began)
+                    {
+                        dragging = NodnarbInputPolicy.CanBeginWorldGesture(
+                            touch.position,
+                            Screen.safeArea,
+                            Screen.height,
+                            IsPointerOverUi(touch.fingerId));
+                        lastPointer = touch.position;
+                    }
+                    else if (dragging && (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary))
+                    {
+                        MoveByScreenDelta(touch.position - lastPointer);
+                        lastPointer = touch.position;
+                    }
+                    else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
+                    {
+                        dragging = false;
+                        activeTouchId = -1;
+                    }
                 }
             }
             else if (Input.GetMouseButtonDown(0))
             {
                 Vector2 pointer = Input.mousePosition;
-                dragging = pointer.y >= Screen.height * 0.16f && !IsPointerOverUi(-1);
+                dragging = NodnarbInputPolicy.CanBeginWorldGesture(
+                    pointer,
+                    Screen.safeArea,
+                    Screen.height,
+                    IsPointerOverUi(-1));
                 lastPointer = pointer;
             }
             else if (Input.GetMouseButton(0) && dragging)
@@ -165,6 +261,11 @@ namespace EscapeFromNodnarb
             Vector3 position = root.transform.position;
             position.x = Mathf.Lerp(position.x, routeCenterX + targetX, 1f - Mathf.Exp(-18f * deltaTime));
             root.transform.position = position;
+
+            float safeDeltaTime = Mathf.Max(0.0001f, deltaTime);
+            float velocityX = (position.x - lastRootX) / safeDeltaTime;
+            lastRootX = position.x;
+            UpdateUnitMotion(deltaTime, velocityX);
         }
 
         public void Refresh(int soldierCount)
@@ -182,6 +283,9 @@ namespace EscapeFromNodnarb
                     Color.Lerp(GameTheme.SuitColor(suitIndex), GameTheme.Text, 0.26f), false);
                 soldiers.Add(soldier);
                 soldierBaseScales.Add(soldier.localScale);
+                soldierBasePositions.Add(soldier.localPosition);
+                soldierBaseRotations.Add(soldier.localRotation);
+                soldierMotionParts.Add(FindSoldierMotionParts(soldier));
                 muzzles.Add(soldier.Find("Muzzle"));
                 RegisterMuzzleFlash(muzzles[muzzles.Count - 1]);
             }
@@ -192,6 +296,9 @@ namespace EscapeFromNodnarb
                 Object.Destroy(soldiers[last].gameObject);
                 soldiers.RemoveAt(last);
                 soldierBaseScales.RemoveAt(last);
+                soldierBasePositions.RemoveAt(last);
+                soldierBaseRotations.RemoveAt(last);
+                soldierMotionParts.RemoveAt(last);
                 muzzles.RemoveAt(last);
                 int flashIndex = 1 + last;
                 if (flashIndex < muzzleFlashes.Count)
@@ -206,9 +313,41 @@ namespace EscapeFromNodnarb
             {
                 soldiers[i].localPosition = FormationPosition(i, soldiers.Count);
                 AlignImportedUnitToGround(soldiers[i]);
+                soldierBasePositions[i] = soldiers[i].localPosition;
+                soldierBaseRotations[i] = soldiers[i].localRotation;
             }
 
             builtSoldierCount = soldierCount;
+            ApplyAccessibilitySettings();
+        }
+
+        public void ApplyAccessibilitySettings()
+        {
+            for (int i = 0; i < muzzleFlashes.Count; i++)
+            {
+                Transform flash = muzzleFlashes[i];
+                if (flash == null)
+                {
+                    continue;
+                }
+
+                Renderer[] renderers = flash.GetComponentsInChildren<Renderer>(true);
+                for (int rendererIndex = 0; rendererIndex < renderers.Length; rendererIndex++)
+                {
+                    if (NodnarbSettings.HighContrastEnabled)
+                    {
+                        muzzleAccessibilityBlock.Clear();
+                        muzzleAccessibilityBlock.SetColor("_Color", GameTheme.AccessibleSignalBright);
+                        renderers[rendererIndex].SetPropertyBlock(muzzleAccessibilityBlock);
+                    }
+                    else
+                    {
+                        renderers[rendererIndex].SetPropertyBlock(null);
+                    }
+                }
+            }
+
+            AccessibilityVisualApplied = true;
         }
 
         public void GetMuzzlePositions(List<Vector3> output)
@@ -230,6 +369,11 @@ namespace EscapeFromNodnarb
 
         public void Recoil()
         {
+            if (NodnarbSettings.ReducedMotionEnabled)
+            {
+                return;
+            }
+
             if (captain != null)
             {
                 captain.localScale = new Vector3(captainBaseScale.x, captainBaseScale.y, captainBaseScale.z * 0.93f);
@@ -270,7 +414,7 @@ namespace EscapeFromNodnarb
             captainDamageBlock.Clear();
             if (active)
             {
-                captainDamageBlock.SetColor("_Color", Color.Lerp(Color.white, GameTheme.Danger, 0.58f));
+                captainDamageBlock.SetColor("_Color", Color.Lerp(Color.white, GameTheme.AccessibleDanger, 0.58f));
             }
 
             for (int i = 0; i < renderers.Length; i++)
@@ -281,10 +425,49 @@ namespace EscapeFromNodnarb
 
         private void MoveByScreenDelta(Vector2 delta)
         {
-            if (Screen.width > 0)
+            Rect safeArea = Screen.safeArea;
+            float width = safeArea.width > 0f ? safeArea.width : Screen.width;
+            if (width > 0f)
             {
-                targetX += delta.x / Screen.width * GameTheme.ArenaHalfWidth * 2.5f;
+                targetX += delta.x / width * GameTheme.ArenaHalfWidth * 2.5f;
             }
+        }
+
+        private bool TryGetActiveTouch(out Touch activeTouch)
+        {
+            activeTouch = default(Touch);
+            if (activeTouchId >= 0)
+            {
+                for (int i = 0; i < Input.touchCount; i++)
+                {
+                    Touch touch = Input.GetTouch(i);
+                    if (touch.fingerId == activeTouchId)
+                    {
+                        activeTouch = touch;
+                        return true;
+                    }
+                }
+
+                activeTouchId = -1;
+            }
+
+            for (int i = 0; i < Input.touchCount; i++)
+            {
+                Touch touch = Input.GetTouch(i);
+                if (touch.phase == TouchPhase.Began
+                    && NodnarbInputPolicy.CanBeginWorldGesture(
+                        touch.position,
+                        Screen.safeArea,
+                        Screen.height,
+                        IsPointerOverUi(touch.fingerId)))
+                {
+                    activeTouchId = touch.fingerId;
+                    activeTouch = touch;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool IsPointerOverUi(int pointerId)
@@ -304,13 +487,137 @@ namespace EscapeFromNodnarb
             int countInRow = Mathf.Min(4, totalSoldiers - row * 4);
             float spacing = countInRow <= 2 ? 1.08f : countInRow == 3 ? 0.92f : 0.76f;
             float x = (inRow - (countInRow - 1) * 0.5f) * spacing;
-            float z = GameTheme.CaptainZ + CrewFirstRowZOffset + row * CrewRowZSpacing;
+            float z = GameTheme.CaptainZ + CaptainLocalZOffset - CrewFirstRowZOffset - row * CrewRowZSpacing;
             if (index >= 8)
             {
                 x += 0.41f;
             }
 
             return new Vector3(x, 0f, z);
+        }
+
+        private void UpdateUnitMotion(float deltaTime, float velocityX)
+        {
+            if (captain == null)
+            {
+                return;
+            }
+
+            if (NodnarbSettings.ReducedMotionEnabled)
+            {
+                motionVelocityX = 0f;
+                captain.localPosition = captainBasePosition;
+                captain.localRotation = captainBaseRotation;
+                captain.localScale = captainBaseScale;
+                for (int i = 0; i < soldiers.Count; i++)
+                {
+                    soldiers[i].localPosition = soldierBasePositions[i];
+                    soldiers[i].localRotation = soldierBaseRotations[i];
+                    soldiers[i].localScale = soldierBaseScales[i];
+                    RestoreSoldierMotionParts(soldierMotionParts[i]);
+                }
+
+                return;
+            }
+
+            float safeDeltaTime = Mathf.Max(0.0001f, deltaTime);
+            float blend = 1f - Mathf.Exp(-MotionBlendSpeed * safeDeltaTime);
+            motionVelocityX = Mathf.Lerp(motionVelocityX, velocityX, blend);
+            float speed = Mathf.Abs(motionVelocityX);
+            float movement01 = Mathf.InverseLerp(MotionStartSpeed, MotionFullSpeed, speed);
+            if (speed > MotionStartSpeed)
+            {
+                motionPhase = Mathf.Repeat(motionPhase + speed * MotionBobPhasePerSpeed * safeDeltaTime, Mathf.PI * 2f);
+            }
+
+            float leanDegrees = Mathf.Clamp(-motionVelocityX * MotionLeanDegreesPerSpeed,
+                -MotionMaxLeanDegrees, MotionMaxLeanDegrees);
+            ApplyUnitMotion(captain, captainBasePosition, captainBaseRotation, captainBaseScale,
+                motionPhase, movement01, leanDegrees, blend);
+
+            for (int i = 0; i < soldiers.Count; i++)
+            {
+                ApplyUnitMotion(soldiers[i], soldierBasePositions[i], soldierBaseRotations[i], soldierBaseScales[i],
+                    motionPhase + (i + 1) * MotionPhaseOffset, movement01, leanDegrees, blend);
+                ApplySoldierLimbMotion(soldierMotionParts[i], motionPhase + (i + 1) * MotionPhaseOffset,
+                    movement01, blend);
+            }
+        }
+
+        private static SoldierMotionParts FindSoldierMotionParts(Transform soldier)
+        {
+            SoldierMotionParts parts = new SoldierMotionParts
+            {
+                LeftLeg = FindDescendant(soldier, "Thigh"),
+                RightLeg = FindDescendant(soldier, "Thigh.001"),
+                LeftArm = FindDescendant(soldier, "UpperArm"),
+                RightArm = FindDescendant(soldier, "UpperArm.001")
+            };
+
+            if (parts.LeftLeg != null) parts.LeftLegBaseRotation = parts.LeftLeg.localRotation;
+            if (parts.RightLeg != null) parts.RightLegBaseRotation = parts.RightLeg.localRotation;
+            if (parts.LeftArm != null) parts.LeftArmBaseRotation = parts.LeftArm.localRotation;
+            if (parts.RightArm != null) parts.RightArmBaseRotation = parts.RightArm.localRotation;
+            return parts;
+        }
+
+        private static void RestoreSoldierMotionParts(SoldierMotionParts parts)
+        {
+            if (parts.LeftLeg != null) parts.LeftLeg.localRotation = parts.LeftLegBaseRotation;
+            if (parts.RightLeg != null) parts.RightLeg.localRotation = parts.RightLegBaseRotation;
+            if (parts.LeftArm != null) parts.LeftArm.localRotation = parts.LeftArmBaseRotation;
+            if (parts.RightArm != null) parts.RightArm.localRotation = parts.RightArmBaseRotation;
+        }
+
+        private static void ApplySoldierLimbMotion(SoldierMotionParts parts, float phase, float movement01, float blend)
+        {
+            if (parts == null || !parts.HasParts)
+            {
+                return;
+            }
+
+            float stride = Mathf.Sin(phase) * 11f * movement01;
+            float counterStride = Mathf.Sin(phase + Mathf.PI) * 11f * movement01;
+            float armSwing = Mathf.Sin(phase + Mathf.PI) * 7f * movement01;
+            float counterArmSwing = Mathf.Sin(phase) * 7f * movement01;
+            ApplyPartRotation(parts.LeftLeg, parts.LeftLegBaseRotation, stride, blend);
+            ApplyPartRotation(parts.RightLeg, parts.RightLegBaseRotation, counterStride, blend);
+            ApplyPartRotation(parts.LeftArm, parts.LeftArmBaseRotation, armSwing, blend);
+            ApplyPartRotation(parts.RightArm, parts.RightArmBaseRotation, counterArmSwing, blend);
+        }
+
+        private static void ApplyPartRotation(Transform part, Quaternion baseRotation, float angle, float blend)
+        {
+            if (part == null)
+            {
+                return;
+            }
+
+            Quaternion target = baseRotation * Quaternion.Euler(angle, 0f, 0f);
+            part.localRotation = Quaternion.Slerp(part.localRotation, target, blend);
+        }
+
+        private static void ApplyUnitMotion(Transform unit, Vector3 basePosition, Quaternion baseRotation,
+            Vector3 baseScale, float phase, float movement01, float leanDegrees, float blend)
+        {
+            if (unit == null)
+            {
+                return;
+            }
+
+            float bob = Mathf.Sin(phase) * MotionBobAmplitude * movement01;
+            Vector3 targetPosition = basePosition + Vector3.up * bob;
+            unit.localPosition = Vector3.Lerp(unit.localPosition, targetPosition, blend);
+
+            Quaternion targetRotation = baseRotation * Quaternion.Euler(0f, 0f, leanDegrees);
+            unit.localRotation = Quaternion.Slerp(unit.localRotation, targetRotation, blend);
+
+            float weightShift = Mathf.Sin(phase + MotionPhaseOffset);
+            Vector3 targetScale = baseScale;
+            targetScale.x *= 1f + weightShift * 0.012f * movement01;
+            targetScale.y *= 1f + Mathf.Abs(weightShift) * 0.006f * movement01;
+            targetScale.z *= 1f - Mathf.Abs(weightShift) * 0.010f * movement01;
+            unit.localScale = Vector3.Lerp(unit.localScale, targetScale, blend);
         }
 
         private static Transform BuildUnit(string name, Transform parent, Vector3 localPosition, float scale, Color suitColor, bool captainUnit)
@@ -439,7 +746,7 @@ namespace EscapeFromNodnarb
 
             muzzleFlashTimer = Mathf.Max(0f, muzzleFlashTimer - deltaTime);
             float normalized = Mathf.Clamp01(muzzleFlashTimer / 0.09f);
-            float scale = 0.70f + normalized * 0.45f;
+            float scale = NodnarbSettings.ReducedMotionEnabled ? 1f : 0.70f + normalized * 0.45f;
             for (int i = 0; i < muzzleFlashes.Count; i++)
             {
                 Transform flash = muzzleFlashes[i];

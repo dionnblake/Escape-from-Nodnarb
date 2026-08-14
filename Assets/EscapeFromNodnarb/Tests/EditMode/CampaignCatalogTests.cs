@@ -45,6 +45,33 @@ namespace EscapeFromNodnarb.Tests
         }
 
         [Test]
+        public void CampaignDifficultyAndDurationBuildTowardExtraction()
+        {
+            for (int index = 1; index < CampaignCatalog.All.Count; index++)
+            {
+                LevelDefinition previous = CampaignCatalog.All[index - 1];
+                LevelDefinition current = CampaignCatalog.All[index];
+                Assert.That(current.Difficulty, Is.GreaterThan(previous.Difficulty));
+                Assert.That(current.DifficultyRamp, Is.GreaterThanOrEqualTo(previous.DifficultyRamp));
+                Assert.That(current.DurationSeconds, Is.GreaterThanOrEqualTo(previous.DurationSeconds));
+            }
+
+            Assert.That(CampaignCatalog.Get(10).BossLeadSeconds, Is.GreaterThan(CampaignCatalog.Get(1).BossLeadSeconds));
+        }
+
+        [Test]
+        public void CampaignCardWindowsLeaveRoomForCombatBeforeTheBoss()
+        {
+            foreach (LevelDefinition level in CampaignCatalog.All)
+            {
+                Assert.That(level.CardStartDelaySeconds, Is.LessThan(level.DurationSeconds - level.BossLeadSeconds));
+                Assert.That(level.CardIntervalMinSeconds, Is.GreaterThanOrEqualTo(6f));
+                Assert.That(level.CardIntervalMaxSeconds, Is.LessThanOrEqualTo(13f));
+                Assert.That(level.CardIntervalMaxSeconds - level.CardIntervalMinSeconds, Is.GreaterThanOrEqualTo(1f));
+            }
+        }
+
+        [Test]
         public void CampaignUsesConfirmedEscapeJourneyAndVariedRoutes()
         {
             Assert.That(CampaignCatalog.Get(1).Name, Does.Contain("Wreck"));
@@ -141,6 +168,36 @@ namespace EscapeFromNodnarb.Tests
             Assert.That(CampaignCatalog.RouteBeat(CampaignCatalog.Get(3)), Does.Contain("SPORE"));
             Assert.That(CampaignCatalog.RouteBeat(CampaignCatalog.Get(4)), Does.Contain("SWITCHBACK"));
             Assert.That(CampaignCatalog.BossBrief(CampaignCatalog.Get(5)), Does.Contain("ARMORED"));
+        }
+
+        [Test]
+        public void CampaignHasDistinctAlienEcologyAndStoryboardBeats()
+        {
+            Assert.That(CampaignCatalog.All.Select(level => level.Ecology).Distinct().Count(), Is.EqualTo(10));
+            Assert.That(StoryboardCatalog.All.Count, Is.EqualTo(10));
+            for (int index = 0; index < StoryboardCatalog.All.Count; index++)
+            {
+                StoryboardBeat beat = StoryboardCatalog.Get(index + 1);
+                Assert.That(beat.FrameOne, Is.Not.Empty);
+                Assert.That(beat.FrameTwo, Is.Not.Empty);
+                Assert.That(beat.VisualDirection, Is.Not.Empty);
+                Assert.That(beat.SoundDirection, Is.Not.Empty);
+            }
+        }
+
+        [Test]
+        public void StoryboardBeatsClampSafely()
+        {
+            Assert.That(StoryboardCatalog.Get(0).Level, Is.EqualTo(1));
+            Assert.That(StoryboardCatalog.Get(99).Level, Is.EqualTo(10));
+        }
+
+        [Test]
+        public void EndlessStoryboardUsesItsOwnDeadSignalBeat()
+        {
+            Assert.That(StoryboardCatalog.Endless.Level, Is.Zero);
+            Assert.That(StoryboardCatalog.Endless.FrameOne, Does.Contain("SIGNAL"));
+            Assert.That(StoryboardCatalog.Endless.FrameOne, Is.Not.EqualTo(StoryboardCatalog.Get(1).FrameOne));
         }
     }
 }

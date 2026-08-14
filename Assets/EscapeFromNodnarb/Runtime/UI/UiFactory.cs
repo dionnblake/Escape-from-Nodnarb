@@ -63,12 +63,23 @@ namespace EscapeFromNodnarb
             label.font = RuntimeFont;
             label.text = value;
             label.fontSize = size;
+            label.fontStyle = size >= 28 ? FontStyle.Bold : FontStyle.Normal;
             label.color = color;
             label.alignment = alignment;
             label.horizontalOverflow = HorizontalWrapMode.Wrap;
             label.verticalOverflow = VerticalWrapMode.Truncate;
             label.supportRichText = false;
             label.raycastTarget = false;
+            label.resizeTextForBestFit = size >= 18;
+            label.resizeTextMinSize = Mathf.Max(12, size - 8);
+            label.resizeTextMaxSize = size;
+            if (size >= 18)
+            {
+                Outline outline = labelObject.AddComponent<Outline>();
+                outline.effectColor = new Color(0f, 0f, 0f, 0.58f);
+                outline.effectDistance = new Vector2(1.0f, -1.0f);
+                outline.useGraphicAlpha = true;
+            }
             return label;
         }
 
@@ -82,17 +93,21 @@ namespace EscapeFromNodnarb
             GameObject buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button), typeof(TactileButton));
             buttonObject.transform.SetParent(parent, false);
             Image image = buttonObject.GetComponent<Image>();
-            image.color = primary ? GameTheme.Signal : GameTheme.SurfaceRaised;
+            image.color = primary ? GameTheme.SignalButton : GameTheme.SurfaceChrome;
+            Outline trim = buttonObject.AddComponent<Outline>();
+            trim.effectColor = UiFactory.Alpha(primary ? GameTheme.SignalBright : GameTheme.Rule, primary ? 0.72f : 0.88f);
+            trim.effectDistance = new Vector2(1f, -1f);
+            trim.useGraphicAlpha = true;
             Button button = buttonObject.GetComponent<Button>();
             Navigation navigation = button.navigation;
             navigation.mode = Navigation.Mode.None;
             button.navigation = navigation;
             ColorBlock colors = button.colors;
-            colors.normalColor = primary ? GameTheme.Signal : GameTheme.SurfaceRaised;
-            colors.highlightedColor = primary ? Color.Lerp(GameTheme.Signal, GameTheme.Text, 0.16f) : Color.Lerp(GameTheme.SurfaceRaised, GameTheme.Text, 0.12f);
-            colors.pressedColor = primary ? Color.Lerp(GameTheme.Signal, GameTheme.Void, 0.26f) : GameTheme.Surface;
+            colors.normalColor = primary ? GameTheme.SignalButton : GameTheme.SurfaceChrome;
+            colors.highlightedColor = primary ? Color.Lerp(GameTheme.SignalButtonBright, GameTheme.Text, 0.16f) : Color.Lerp(GameTheme.SurfaceChrome, GameTheme.Text, 0.12f);
+            colors.pressedColor = primary ? Color.Lerp(GameTheme.SignalButton, GameTheme.Void, 0.26f) : GameTheme.Surface;
             colors.selectedColor = colors.highlightedColor;
-            colors.disabledColor = Color.Lerp(GameTheme.Surface, GameTheme.Rule, 0.45f);
+            colors.disabledColor = Color.Lerp(GameTheme.SurfaceGlassDeep, GameTheme.Rule, 0.45f);
             colors.colorMultiplier = 1f;
             colors.fadeDuration = 0.08f;
             button.colors = colors;
@@ -134,6 +149,25 @@ namespace EscapeFromNodnarb
             Anchor(rect, Vector2.zero, Vector2.one, offsetMin, offsetMax);
         }
 
+        public static Rect NormalizedSafeArea(Rect safeArea, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+            {
+                return new Rect(0f, 0f, 1f, 1f);
+            }
+
+            Rect clamped = safeArea;
+            clamped.xMin = Mathf.Clamp(clamped.xMin, 0f, screenWidth);
+            clamped.xMax = Mathf.Clamp(clamped.xMax, clamped.xMin, screenWidth);
+            clamped.yMin = Mathf.Clamp(clamped.yMin, 0f, screenHeight);
+            clamped.yMax = Mathf.Clamp(clamped.yMax, clamped.yMin, screenHeight);
+            return new Rect(
+                clamped.xMin / screenWidth,
+                clamped.yMin / screenHeight,
+                clamped.width / screenWidth,
+                clamped.height / screenHeight);
+        }
+
         public static Color Alpha(Color color, float alpha)
         {
             color.a = alpha;
@@ -163,7 +197,7 @@ namespace EscapeFromNodnarb
 
         public void OnPointerDown(PointerEventData eventData)
         {
-            transform.localScale = baseScale * 0.97f;
+            transform.localScale = NodnarbSettings.ReducedMotionEnabled ? baseScale : baseScale * 0.97f;
         }
 
         public void OnPointerUp(PointerEventData eventData)
@@ -206,8 +240,9 @@ namespace EscapeFromNodnarb
             }
 
             RectTransform rect = (RectTransform)transform;
-            rect.anchorMin = new Vector2(safe.xMin / Screen.width, safe.yMin / Screen.height);
-            rect.anchorMax = new Vector2(safe.xMax / Screen.width, safe.yMax / Screen.height);
+            Rect normalized = UiFactory.NormalizedSafeArea(safe, Screen.width, Screen.height);
+            rect.anchorMin = new Vector2(normalized.xMin, normalized.yMin);
+            rect.anchorMax = new Vector2(normalized.xMax, normalized.yMax);
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
         }

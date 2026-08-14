@@ -30,15 +30,15 @@ namespace EscapeFromNodnarb
         {
             if (relativeX <= -SideThreshold)
             {
-                return "AIM LEFT  //  WEAPON +1  //  CHOOSE ONE";
+                return "LEFT  //  WEAPON +1";
             }
 
             if (relativeX >= SideThreshold)
             {
-                return "AIM RIGHT  //  CREW +1  //  CHOOSE ONE";
+                return "RIGHT  //  CREW +1";
             }
 
-            return "CHOOSE ONE  //  LEFT WEAPON +1  //  RIGHT CREW +1";
+            return "CHOOSE ONE  //  LEFT WEAPON  //  RIGHT CREW";
         }
     }
 }

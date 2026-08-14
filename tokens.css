@@ -8,11 +8,14 @@
   --color-void: #0b0e0b;
   --color-surface: #141914;
   --color-surface-raised: #1d241d;
+  --color-surface-chrome: #17231f;
   --color-rule: #465046;
   --color-text: #f2f5ed;
   --color-muted: #8c9588;
   --color-signal: #84cc16;
   --color-signal-bright: #b7ff3c;
+  --color-signal-button: #5f9e12;
+  --color-signal-button-bright: #82c91c;
   --color-danger: #d04b4b;
   --color-weapon: #d9d5c7;
   --color-weapon-upgrade: #ff9b43;

@@ -24,6 +24,12 @@ namespace EscapeFromNodnarb
         Recruit
     }
 
+    public enum CardActivationSource
+    {
+        AutoFire,
+        Touch
+    }
+
     public sealed class EnemyAgent : MonoBehaviour, IFriendlyDamageable
     {
         private NodnarbGame game;
@@ -45,6 +51,9 @@ namespace EscapeFromNodnarb
         private float bossShotDamage;
         private float laneX;
         private float hitPulse;
+        private float healthFeedbackTimer;
+        private float visualFlashTimer;
+        private bool visualFlashApplied;
         private float maxHealth;
         private GameObject bossTelegraph;
         private Vector3 bossTelegraphBaseScale = Vector3.one;
@@ -55,6 +64,14 @@ namespace EscapeFromNodnarb
         private Renderer healthFillRenderer;
         private MaterialPropertyBlock healthColorBlock;
         private Vector3 healthFillBaseScale = Vector3.one;
+        private Vector3 healthFillBaseLocalPosition;
+        private bool visualBuilt;
+        private Renderer[] accessibilityRenderers;
+        private MaterialPropertyBlock accessibilityColorBlock;
+        private Transform rangedMuzzleFlash;
+        private float rangedMuzzleFlashTimer;
+
+        public bool AccessibilityVisualApplied { get; private set; }
 
         public EnemyKind Kind
         {
@@ -86,6 +103,46 @@ namespace EscapeFromNodnarb
             get { return maxHealth <= 0f ? 0f : Mathf.Clamp01(health / maxHealth); }
         }
 
+        public float CurrentHealth
+        {
+            get { return Mathf.Max(0f, health); }
+        }
+
+        public float MaxHealth
+        {
+            get { return maxHealth; }
+        }
+
+        public float LaneX
+        {
+            get { return laneX; }
+        }
+
+        public float RangedTimer
+        {
+            get { return Mathf.Max(0f, rangedTimer); }
+        }
+
+        public float Speed
+        {
+            get { return speed; }
+        }
+
+        public BossBehavior BossBehavior
+        {
+            get { return bossBehavior; }
+        }
+
+        public float BossTelegraphTimer
+        {
+            get { return Mathf.Max(0f, bossTelegraphTimer); }
+        }
+
+        public bool BossTelegraphArmed
+        {
+            get { return bossTelegraphArmed; }
+        }
+
         public bool HasHealthFeedback
         {
             get { return healthBand != null && healthFill != null && healthFillRenderer != null; }
@@ -109,12 +166,15 @@ namespace EscapeFromNodnarb
             laneX = xPosition;
             alive = true;
             hitPulse = 0f;
+            healthFeedbackTimer = 0f;
+            visualFlashTimer = 0f;
+            visualFlashApplied = false;
+            rangedMuzzleFlashTimer = 0f;
             bossTelegraphTimer = 0f;
             bossTelegraphArmed = false;
             swayOffset = xPosition * 0.73f;
             float spawnZ = GameTheme.SpawnZ + (kind == EnemyKind.Boss ? 1.5f : 0f);
             transform.position = new Vector3(game.RouteWorldX(laneX, spawnZ), 0f, spawnZ);
-            BuildGroundShadow();
 
             switch (kind)
             {
@@ -125,7 +185,6 @@ namespace EscapeFromNodnarb
                     contactDamage = 15f;
                     score = 28;
                     salvage = 2;
-                    BuildRanged();
                     break;
                 case EnemyKind.Armored:
                     health = 10f + difficulty * 9f;
@@ -133,11 +192,9 @@ namespace EscapeFromNodnarb
                     contactDamage = 24f;
                     score = 42;
                     salvage = 3;
-                    BuildArmored();
                     break;
                 case EnemyKind.Boss:
                     ConfigureBoss(difficulty);
-                    BuildBoss();
                     break;
                 default:
                     health = 3.2f + difficulty * 3.8f;
@@ -145,13 +202,37 @@ namespace EscapeFromNodnarb
                     contactDamage = 18f;
                     score = 18;
                     salvage = 1;
-                    BuildMelee();
                     break;
             }
 
             maxHealth = health;
-            BuildHealthFeedback();
+            if (!visualBuilt)
+            {
+                BuildVisual();
+                visualBuilt = true;
+            }
+
+            ResetVisualState();
+            gameObject.SetActive(true);
             game.RegisterEnemy(this);
+        }
+
+        public void RestoreCheckpoint(PausedEnemyData checkpoint)
+        {
+            if (!alive || game == null || checkpoint == null)
+            {
+                return;
+            }
+
+            float positionX = checkpoint.ExactState ? checkpoint.PositionX : game.RouteWorldX(laneX, checkpoint.PositionZ);
+            transform.position = new Vector3(positionX, 0f, checkpoint.PositionZ);
+            maxHealth = checkpoint.ExactState ? checkpoint.MaxHealth : maxHealth;
+            health = checkpoint.ExactState ? checkpoint.Health : maxHealth * Mathf.Clamp01(checkpoint.HealthRatio);
+            speed = checkpoint.ExactState ? checkpoint.Speed : speed;
+            rangedTimer = Mathf.Max(0f, checkpoint.RangedTimer);
+            bossTelegraphTimer = Mathf.Max(0f, checkpoint.BossTelegraphTimer);
+            bossTelegraphArmed = checkpoint.BossTelegraphArmed;
+            RefreshHealthFeedback();
         }
 
         private void ConfigureBoss(float difficulty)
@@ -238,6 +319,12 @@ namespace EscapeFromNodnarb
             }
 
             health -= damage;
+            healthFeedbackTimer = 1.25f;
+            visualFlashTimer = NodnarbSettings.ReducedMotionEnabled ? 0f : 0.10f;
+            if (healthBand != null)
+            {
+                healthBand.gameObject.SetActive(true);
+            }
             hitPulse = Mathf.Max(hitPulse, kind == EnemyKind.Boss ? 0.13f : 0.18f);
             RefreshHealthFeedback();
             if (health <= 0f)
@@ -255,7 +342,7 @@ namespace EscapeFromNodnarb
 
             alive = false;
             game.UnregisterEnemy(this);
-            Destroy(gameObject);
+            game.ReleaseEnemy(this);
         }
 
         private void Update()
@@ -265,15 +352,34 @@ namespace EscapeFromNodnarb
                 return;
             }
 
-            float deltaTime = Time.deltaTime;
-            hitPulse = Mathf.MoveTowards(hitPulse, 0f, deltaTime * 5.8f);
-            transform.localScale = Vector3.one * (1f + hitPulse);
+            float deltaTime = game.SimulationDeltaTime;
+            if (deltaTime <= 0f)
+            {
+                return;
+            }
+            hitPulse = NodnarbSettings.ReducedMotionEnabled
+                ? 0f
+                : Mathf.MoveTowards(hitPulse, 0f, deltaTime * 5.8f);
+            visualFlashTimer = Mathf.Max(0f, visualFlashTimer - deltaTime);
+            if (kind != EnemyKind.Boss && healthBand != null && healthFeedbackTimer > 0f)
+            {
+                healthFeedbackTimer = Mathf.Max(0f, healthFeedbackTimer - deltaTime);
+                if (healthFeedbackTimer <= 0f)
+                {
+                    healthBand.gameObject.SetActive(false);
+                }
+            }
+            transform.localScale = NodnarbSettings.ReducedMotionEnabled
+                ? Vector3.one
+                : Vector3.one * (1f + hitPulse);
+            ApplyVisualFlash();
+            UpdateRangedMuzzleFlash(deltaTime);
             Vector3 position = transform.position;
             float routeX = game.RouteWorldX(laneX, position.z);
             float targetX = Mathf.Lerp(routeX, game.SquadX, kind == EnemyKind.Boss ? 0.72f : 0.38f);
             float tracking = kind == EnemyKind.Boss ? bossTracking : kind == EnemyKind.Melee ? 0.44f : 0.22f;
             position.x = Mathf.MoveTowards(position.x, targetX, tracking * deltaTime);
-            if (kind == EnemyKind.Boss)
+            if (kind == EnemyKind.Boss && !NodnarbSettings.ReducedMotionEnabled)
             {
                 position.x += Mathf.Sin(Time.time * bossSwayFrequency + swayOffset) * bossSwayAmplitude * deltaTime;
             }
@@ -299,6 +405,7 @@ namespace EscapeFromNodnarb
                     bossTelegraphArmed = false;
                     bossTelegraphTimer = 0f;
                     float damage = kind == EnemyKind.Boss ? bossShotDamage : 9f;
+                    PulseRangedMuzzleFlash();
                     game.FireHostile(HitPosition, game.CaptainPosition + Vector3.up * 0.55f, damage);
                 }
             }
@@ -308,7 +415,7 @@ namespace EscapeFromNodnarb
                 alive = false;
                 game.UnregisterEnemy(this);
                 game.OnFrontLineBreached(contactDamage);
-                Destroy(gameObject);
+                game.ReleaseEnemy(this);
             }
         }
 
@@ -317,7 +424,47 @@ namespace EscapeFromNodnarb
             alive = false;
             game.UnregisterEnemy(this);
             game.OnEnemyKilled(this, score, salvage);
-            Destroy(gameObject);
+            game.ReleaseEnemy(this);
+        }
+
+        private void ApplyVisualFlash()
+        {
+            if (accessibilityRenderers == null)
+            {
+                return;
+            }
+
+            bool flash = visualFlashTimer > 0f && !NodnarbSettings.ReducedMotionEnabled;
+            if (!flash)
+            {
+                if (visualFlashApplied)
+                {
+                    ApplyAccessibilitySettings();
+                }
+                return;
+            }
+
+            if (visualFlashApplied)
+            {
+                return;
+            }
+
+            Color flashColor = kind == EnemyKind.Boss ? GameTheme.AccessibleDanger : GameTheme.AccessibleSignalBright;
+            for (int index = 0; index < accessibilityRenderers.Length; index++)
+            {
+                Renderer renderer = accessibilityRenderers[index];
+                if (!ShouldApplyAccessibilityColor(renderer))
+                {
+                    continue;
+                }
+
+                MaterialPropertyBlock block = accessibilityColorBlock ?? new MaterialPropertyBlock();
+                block.Clear();
+                block.SetColor("_Color", Color.Lerp(Color.white, flashColor, 0.42f));
+                renderer.SetPropertyBlock(block);
+            }
+
+            visualFlashApplied = true;
         }
 
         private void OnDestroy()
@@ -357,6 +504,200 @@ namespace EscapeFromNodnarb
                 new Vector3(0.12f, 0.12f, 0.08f), GameTheme.AlienGlow);
         }
 
+        private void BuildVisual()
+        {
+            BuildGroundShadow();
+            switch (kind)
+            {
+                case EnemyKind.Ranged:
+                    BuildRanged();
+                    break;
+                case EnemyKind.Armored:
+                    BuildArmored();
+                    break;
+                case EnemyKind.Boss:
+                    BuildBoss();
+                    break;
+                default:
+                    BuildMelee();
+                    break;
+            }
+
+            // Imported meshes provide the base silhouette. These authored
+            // runtime accents give each enemy a readable face, role marker,
+            // and color signal without replacing the licensed-safe source
+            // geometry or changing the actor root contract.
+            BuildEnemyAccents();
+
+            if (kind == EnemyKind.Ranged || kind == EnemyKind.Boss)
+            {
+                BuildRangedMuzzleFlash();
+            }
+
+            BuildHealthFeedback();
+            accessibilityRenderers = GetComponentsInChildren<Renderer>(true);
+            accessibilityColorBlock = new MaterialPropertyBlock();
+            ApplyAccessibilitySettings();
+        }
+
+        private void BuildEnemyAccents()
+        {
+            GameObject accentObject = new GameObject("EnemyAccentRig");
+            Transform root = accentObject.transform;
+            root.SetParent(transform, false);
+
+            switch (kind)
+            {
+                case EnemyKind.Ranged:
+                    PrimitiveFactory.Sphere("SpitterVisorAccent", root,
+                        transform.position + new Vector3(0f, 0.92f, -0.72f),
+                        new Vector3(0.27f, 0.16f, 0.09f), GameTheme.AlienGlow);
+                    PrimitiveFactory.Cylinder("SpitterNeedleAccent", root,
+                        transform.position + new Vector3(0f, 0.62f, -0.73f),
+                        new Vector3(0.08f, 0.26f, 0.08f), GameTheme.SignalCyan);
+                    for (int side = -1; side <= 1; side += 2)
+                    {
+                        PrimitiveFactory.Cube("SpitterFinAccent", root,
+                            transform.position + new Vector3(side * 0.58f, 0.95f, -0.10f),
+                            new Vector3(0.14f, 0.28f, 0.22f), GameTheme.AlienRanged)
+                            .transform.rotation = Quaternion.Euler(0f, 0f, side * 34f);
+                    }
+                    break;
+                case EnemyKind.Armored:
+                    PrimitiveFactory.Cube("BlockerShieldInsetAccent", root,
+                        transform.position + new Vector3(0f, 0.70f, -0.78f),
+                        new Vector3(0.58f, 0.48f, 0.07f), GameTheme.SurfaceGlassDeep);
+                    PrimitiveFactory.Cube("BlockerShieldCoreAccent", root,
+                        transform.position + new Vector3(0f, 0.70f, -0.83f),
+                        new Vector3(0.13f, 0.34f, 0.08f), GameTheme.SignalCyan);
+                    PrimitiveFactory.Cube("BlockerVisorFrameAccent", root,
+                        transform.position + new Vector3(0f, 1.08f, -0.78f),
+                        new Vector3(0.58f, 0.18f, 0.06f), GameTheme.SurfaceGlassDeep);
+                    PrimitiveFactory.Cube("BlockerVisorAccent", root,
+                        transform.position + new Vector3(0f, 1.08f, -0.83f),
+                        new Vector3(0.40f, 0.07f, 0.07f), GameTheme.SignalCyan);
+                    for (int side = -1; side <= 1; side += 2)
+                    {
+                        PrimitiveFactory.Cube("BlockerShoulderAccent", root,
+                            transform.position + new Vector3(side * 0.60f, 0.96f, -0.20f),
+                            new Vector3(0.18f, 0.30f, 0.34f), GameTheme.AlienArmored)
+                            .transform.rotation = Quaternion.Euler(0f, 0f, side * 18f);
+                    }
+                    PrimitiveFactory.Capsule("BlockerCrestAccent", root,
+                        transform.position + new Vector3(0f, 1.35f, -0.06f),
+                        new Vector3(0.20f, 0.34f, 0.16f), GameTheme.AlienArmored);
+                    break;
+                case EnemyKind.Boss:
+                    PrimitiveFactory.Sphere("CarrierCoreAccent", root,
+                        transform.position + new Vector3(0f, 1.56f, -1.14f),
+                        new Vector3(0.42f, 0.42f, 0.12f), GameTheme.AlienGlow);
+                    PrimitiveFactory.Cylinder("CarrierSignalAccent", root,
+                        transform.position + new Vector3(0f, 2.31f, -0.26f),
+                        new Vector3(0.12f, 0.28f, 0.12f), GameTheme.SignalCyan);
+                    for (int side = -1; side <= 1; side += 2)
+                    {
+                        PrimitiveFactory.Cube("CarrierHornAccent", root,
+                            transform.position + new Vector3(side * 0.78f, 2.20f, -0.22f),
+                            new Vector3(0.16f, 0.48f, 0.22f), GameTheme.AlienViolet)
+                            .transform.rotation = Quaternion.Euler(0f, 0f, side * 28f);
+                    }
+                    break;
+                default:
+                    PrimitiveFactory.Sphere("RusherEyeAccent", root,
+                        transform.position + new Vector3(0f, 0.80f, -0.94f),
+                        new Vector3(0.18f, 0.12f, 0.08f), GameTheme.AlienGlow);
+                    PrimitiveFactory.Capsule("RusherJawAccent", root,
+                        transform.position + new Vector3(0f, 0.48f, -0.88f),
+                        new Vector3(0.13f, 0.22f, 0.10f), GameTheme.Weapon);
+                    break;
+            }
+        }
+
+        private void ResetVisualState()
+        {
+            transform.localScale = Vector3.one;
+            if (healthBand != null)
+            {
+                healthBand.gameObject.SetActive(kind == EnemyKind.Boss);
+            }
+
+            if (bossTelegraph != null)
+            {
+                bossTelegraph.SetActive(false);
+                bossTelegraph.transform.localScale = bossTelegraphBaseScale;
+            }
+
+            if (healthFill != null)
+            {
+                healthFill.localScale = healthFillBaseScale;
+                healthFill.localPosition = healthFillBaseLocalPosition;
+            }
+
+            // Ranged enemies are pooled. Reset the flash object itself as well
+            // as its timer so a recycled enemy cannot inherit a stuck muzzle
+            // flash from the previous encounter.
+            rangedMuzzleFlashTimer = 0f;
+            if (rangedMuzzleFlash != null)
+            {
+                rangedMuzzleFlash.localScale = Vector3.one;
+                rangedMuzzleFlash.gameObject.SetActive(false);
+            }
+
+            RefreshHealthFeedback();
+            ApplyAccessibilitySettings();
+        }
+
+        public void ApplyAccessibilitySettings()
+        {
+            visualFlashApplied = false;
+            bool highContrast = NodnarbSettings.HighContrastEnabled;
+            Color accessibleColor = kind == EnemyKind.Boss
+                ? GameTheme.AccessibleDanger
+                : GameTheme.AccessibleSignalBright;
+
+            if (accessibilityRenderers != null)
+            {
+                for (int index = 0; index < accessibilityRenderers.Length; index++)
+                {
+                    Renderer renderer = accessibilityRenderers[index];
+                    if (!ShouldApplyAccessibilityColor(renderer))
+                    {
+                        continue;
+                    }
+
+                    if (highContrast)
+                    {
+                        accessibilityColorBlock.Clear();
+                        accessibilityColorBlock.SetColor("_Color", accessibleColor);
+                        renderer.SetPropertyBlock(accessibilityColorBlock);
+                    }
+                    else
+                    {
+                        renderer.SetPropertyBlock(null);
+                    }
+                }
+            }
+
+            AccessibilityVisualApplied = highContrast;
+            RefreshHealthFeedback();
+        }
+
+        private bool ShouldApplyAccessibilityColor(Renderer renderer)
+        {
+            if (renderer == null || renderer == healthFillRenderer)
+            {
+                return false;
+            }
+
+            if (healthBand != null && renderer.transform.IsChildOf(healthBand))
+            {
+                return false;
+            }
+
+            string rendererName = renderer.gameObject.name;
+            return rendererName != "EnemyShadow" && rendererName != "BossTelegraph";
+        }
+
         private void BuildRanged()
         {
             if (TryBuildImportedVisual("Spitter"))
@@ -378,6 +719,41 @@ namespace EscapeFromNodnarb
 
             PrimitiveFactory.Sphere("SpitterEye", root, transform.position + new Vector3(0f, 0.80f, -0.63f),
                 new Vector3(0.32f, 0.32f, 0.18f), GameTheme.AlienGlow);
+        }
+
+        private void BuildRangedMuzzleFlash()
+        {
+            float height = kind == EnemyKind.Boss ? 1.92f : 1.04f;
+            GameObject flash = PrimitiveFactory.Sphere("RangedMuzzleFlash", transform,
+                transform.position + new Vector3(0f, height, -0.56f),
+                new Vector3(0.18f, 0.18f, 0.34f), GameTheme.ProjectileHostile);
+            rangedMuzzleFlash = flash.transform;
+            rangedMuzzleFlash.gameObject.SetActive(false);
+        }
+
+        private void PulseRangedMuzzleFlash()
+        {
+            if (rangedMuzzleFlash == null)
+            {
+                return;
+            }
+
+            rangedMuzzleFlashTimer = 0.10f;
+            rangedMuzzleFlash.gameObject.SetActive(true);
+        }
+
+        private void UpdateRangedMuzzleFlash(float deltaTime)
+        {
+            if (rangedMuzzleFlash == null || rangedMuzzleFlashTimer <= 0f)
+            {
+                return;
+            }
+
+            rangedMuzzleFlashTimer = Mathf.Max(0f, rangedMuzzleFlashTimer - deltaTime);
+            float normalized = Mathf.Clamp01(rangedMuzzleFlashTimer / 0.10f);
+            float scale = NodnarbSettings.ReducedMotionEnabled ? 1f : 0.72f + normalized * 0.46f;
+            rangedMuzzleFlash.localScale = Vector3.one * scale;
+            rangedMuzzleFlash.gameObject.SetActive(rangedMuzzleFlashTimer > 0f);
         }
 
         private void BuildArmored()
@@ -444,6 +820,7 @@ namespace EscapeFromNodnarb
             healthBand = new GameObject("HealthBand").transform;
             healthBand.transform.SetParent(transform, false);
             healthBand.transform.position = transform.position + Vector3.up * height;
+            healthBand.gameObject.SetActive(kind == EnemyKind.Boss);
 
             GameObject back = PrimitiveFactory.Cube("HealthBack", healthBand,
                 healthBand.position, new Vector3(width, 0.10f, 0.06f), GameTheme.Void);
@@ -454,6 +831,7 @@ namespace EscapeFromNodnarb
             healthFill = fill.transform;
             healthFillRenderer = fill.GetComponent<Renderer>();
             healthFillBaseScale = healthFill.localScale;
+            healthFillBaseLocalPosition = healthFill.localPosition;
             RefreshHealthFeedback();
         }
 
@@ -467,10 +845,10 @@ namespace EscapeFromNodnarb
             float ratio = HealthRatio;
             healthFill.localScale = new Vector3(healthFillBaseScale.x * ratio, healthFillBaseScale.y, healthFillBaseScale.z);
             healthFill.localPosition = new Vector3(-(healthFillBaseScale.x - healthFill.localScale.x) * 0.5f, 0f, -0.04f);
-            Color fillColor = kind == EnemyKind.Boss ? GameTheme.WeaponUpgrade : GameTheme.SignalBright;
+            Color fillColor = kind == EnemyKind.Boss ? GameTheme.AccessibleWeapon : GameTheme.AccessibleSignalBright;
             if (ratio < 0.34f)
             {
-                fillColor = GameTheme.Danger;
+                fillColor = GameTheme.AccessibleDanger;
             }
             healthColorBlock.Clear();
             healthColorBlock.SetColor("_Color", fillColor);
@@ -505,7 +883,9 @@ namespace EscapeFromNodnarb
 
             bossTelegraphTimer = Mathf.Max(0f, bossTelegraphTimer - deltaTime);
             bossTelegraph.SetActive(true);
-            float pulse = 0.90f + Mathf.Sin(Time.time * 24f) * 0.12f;
+            float pulse = NodnarbSettings.ReducedMotionEnabled
+                ? 1f
+                : 0.90f + Mathf.Sin(Time.time * 24f) * 0.12f;
             bossTelegraph.transform.localScale = bossTelegraphBaseScale * pulse;
         }
 
@@ -554,9 +934,16 @@ namespace EscapeFromNodnarb
                 for (int materialIndex = 0; materialIndex < sourceMaterials.Length; materialIndex++)
                 {
                     Material source = sourceMaterials[materialIndex];
-                    Color fallback = source != null && source.HasProperty("_Color") ? source.color : GameTheme.AlienViolet;
-                    string materialName = source == null ? string.Empty : source.name;
-                    runtimeMaterials[materialIndex] = PrimitiveFactory.Material(ImportedColor(resourceName, materialName, fallback));
+                    if (source != null)
+                    {
+                        // Keep the imported material's authored texture, emission, and
+                        // surface response. Only fill genuinely missing material slots.
+                        runtimeMaterials[materialIndex] = source;
+                        continue;
+                    }
+
+                    runtimeMaterials[materialIndex] = PrimitiveFactory.Material(
+                        ImportedColor(resourceName, string.Empty, ImportedBaseColor(resourceName)));
                 }
 
                 if (runtimeMaterials.Length > 0)
@@ -653,17 +1040,30 @@ namespace EscapeFromNodnarb
 
     public sealed class TargetCard : MonoBehaviour, IFriendlyDamageable
     {
+        private const float VisualGeometryScale = 0.82f;
         private NodnarbGame game;
         private CardKind kind;
         private float health;
+        private float maxHealth;
         private float speed;
         private bool alive;
         private Transform panel;
         private Transform signalGlow;
+        private Transform visualRoot;
+        private Vector3 panelBaseScale = Vector3.one;
+        private Vector3 signalGlowBaseScale = Vector3.one;
         private float phase;
         private float lane;
         private CardPathPattern pathPattern;
         private Color accentColor;
+        private float visualFlashTimer;
+        private bool visualFlashApplied;
+        private bool visualBuilt;
+        private Renderer[] accessibilityRenderers;
+        private MaterialPropertyBlock accessibilityColorBlock;
+        private TextMesh label;
+
+        public bool AccessibilityVisualApplied { get; private set; }
 
         public Color AccentColor
         {
@@ -697,6 +1097,75 @@ namespace EscapeFromNodnarb
             get { return alive; }
         }
 
+        public float HealthRatio
+        {
+            get { return maxHealth <= 0f ? 0f : Mathf.Clamp01(health / maxHealth); }
+        }
+
+        public float CurrentHealth
+        {
+            get { return Mathf.Max(0f, health); }
+        }
+
+        public float MaxHealth
+        {
+            get { return maxHealth; }
+        }
+
+        public float PositionZ
+        {
+            get { return transform.position.z; }
+        }
+
+        public float PositionX
+        {
+            get { return transform.position.x; }
+        }
+
+        public float Speed
+        {
+            get { return speed; }
+        }
+
+        public float VisualScale
+        {
+            get { return visualRoot == null ? 1f : visualRoot.localScale.x; }
+        }
+
+        public bool IsScreenTarget(Camera camera, Vector2 screenPosition, float paddingPixels)
+        {
+            if (!alive || camera == null)
+            {
+                return false;
+            }
+
+            Vector3 projected = camera.WorldToScreenPoint(HitPosition);
+            if (projected.z <= 0f)
+            {
+                return false;
+            }
+
+            Vector3 projectedRight = camera.WorldToScreenPoint(HitPosition + Vector3.right * HitRadius);
+            Vector3 projectedUp = camera.WorldToScreenPoint(HitPosition + Vector3.up * HitRadius);
+            float horizontalRadius = Mathf.Abs(projectedRight.x - projected.x);
+            float verticalRadius = Mathf.Abs(projectedUp.y - projected.y);
+            float radius = Mathf.Max(horizontalRadius, verticalRadius) + Mathf.Max(0f, paddingPixels);
+            Vector2 projectedPosition = new Vector2(projected.x, projected.y);
+            return (screenPosition - projectedPosition).sqrMagnitude <= radius * radius;
+        }
+
+        public bool SelectByPlayer()
+        {
+            if (!alive || game == null || !game.CombatActive
+                || !CardChoice.IsSideAligned(kind, game.SquadRelativeX))
+            {
+                return false;
+            }
+
+            game.OnCardActivated(this, CardActivationSource.Touch);
+            return true;
+        }
+
         public void Initialize(NodnarbGame owner, int pairId, CardKind cardKind, float difficulty)
         {
             Initialize(owner, pairId, cardKind, difficulty, CardPathPattern.RailLock);
@@ -710,13 +1179,52 @@ namespace EscapeFromNodnarb
             pathPattern = cardPath;
             alive = true;
             phase = pairId * 0.71f + (kind == CardKind.Weapon ? 0f : 1.8f);
-            health = 3.8f + difficulty * 4.2f;
+            maxHealth = 3.8f + difficulty * 4.2f;
+            health = maxHealth;
             speed = 2.0f + difficulty * 0.22f;
-            lane = kind == CardKind.Weapon ? -2.45f : 2.45f;
+            // Keep the card body inside the portrait camera at the side rails.
+            // The previous 2.25 lateral offset put the 1.48-unit panel beyond
+            // the camera on the physical 1440x3120 S24 frame, clipping the
+            // interactive card and making the left/right choice look broken.
+            lane = kind == CardKind.Weapon ? -1.75f : 1.75f;
             accentColor = kind == CardKind.Recruit ? GameTheme.SignalBright : GameTheme.WeaponUpgrade;
+            visualFlashTimer = 0f;
+            visualFlashApplied = false;
             transform.position = new Vector3(game.RouteWorldX(lane, 18.8f), 0f, 18.8f);
-            BuildVisual();
+            if (!visualBuilt)
+            {
+                BuildVisual();
+                visualBuilt = true;
+            }
+
+            transform.localScale = Vector3.one;
+            if (panel != null)
+            {
+                panel.localScale = panelBaseScale;
+            }
+
+            if (signalGlow != null)
+            {
+                signalGlow.localScale = signalGlowBaseScale;
+            }
+
+            ApplyAccessibilitySettings();
+            gameObject.SetActive(true);
             game.RegisterCard(this);
+        }
+
+        public void RestoreCheckpoint(PausedCardData checkpoint)
+        {
+            if (!alive || game == null || checkpoint == null)
+            {
+                return;
+            }
+
+            float positionX = checkpoint.ExactState ? checkpoint.PositionX : game.RouteWorldX(lane, checkpoint.PositionZ);
+            transform.position = new Vector3(positionX, 0f, checkpoint.PositionZ);
+            maxHealth = checkpoint.ExactState ? checkpoint.MaxHealth : maxHealth;
+            health = checkpoint.ExactState ? checkpoint.Health : maxHealth * Mathf.Clamp01(checkpoint.HealthRatio);
+            speed = checkpoint.ExactState ? checkpoint.Speed : speed;
         }
 
         public void ApplyDamage(float damage)
@@ -727,9 +1235,12 @@ namespace EscapeFromNodnarb
             }
 
             health -= damage;
+            visualFlashTimer = NodnarbSettings.ReducedMotionEnabled ? 0f : 0.10f;
             if (panel != null)
             {
-                panel.localScale = new Vector3(1.08f, 1.08f, 1.08f);
+                panel.localScale = NodnarbSettings.ReducedMotionEnabled
+                    ? panelBaseScale
+                    : panelBaseScale * 1.08f;
             }
 
             if (health <= 0f)
@@ -737,7 +1248,7 @@ namespace EscapeFromNodnarb
                 alive = false;
                 game.UnregisterCard(this);
                 game.OnCardActivated(this);
-                Destroy(gameObject);
+                game.ReleaseCard(this);
             }
         }
 
@@ -750,7 +1261,7 @@ namespace EscapeFromNodnarb
 
             alive = false;
             game.UnregisterCard(this);
-            Destroy(gameObject);
+            game.ReleaseCard(this);
         }
 
         private void Update()
@@ -760,34 +1271,59 @@ namespace EscapeFromNodnarb
                 return;
             }
 
+            float deltaTime = game.SimulationDeltaTime;
+            if (deltaTime <= 0f)
+            {
+                return;
+            }
+
             Vector3 position = transform.position;
-            position.z -= speed * Time.deltaTime;
-            position.y = Mathf.Sin(Time.time * 3.2f + phase) * 0.08f;
-            float lateralX = Mathf.Clamp(lane + PathOffset(), kind == CardKind.Weapon ? -3.05f : 1.25f,
-                kind == CardKind.Weapon ? -1.25f : 3.05f);
+            position.z -= speed * deltaTime;
+            position.y = NodnarbSettings.ReducedMotionEnabled
+                ? 0f
+                : Mathf.Sin(Time.time * 3.2f + phase) * 0.08f;
+            float lateralX = Mathf.Clamp(lane + PathOffset(), kind == CardKind.Weapon ? -1.95f : 1.05f,
+                kind == CardKind.Weapon ? -1.05f : 1.95f);
             position.x = game.RouteWorldX(lateralX, position.z);
             transform.position = position;
             if (panel != null)
             {
-                panel.localScale = Vector3.Lerp(panel.localScale, Vector3.one, 1f - Mathf.Exp(-14f * Time.deltaTime));
+                panel.localScale = NodnarbSettings.ReducedMotionEnabled
+                    ? panelBaseScale
+                    : Vector3.Lerp(panel.localScale, panelBaseScale,
+                        1f - Mathf.Exp(-14f * deltaTime));
             }
             if (signalGlow != null)
             {
-                float pulse = 0.95f + Mathf.Sin(Time.time * 4.4f + phase) * 0.05f;
-                signalGlow.localScale = Vector3.Lerp(signalGlow.localScale, Vector3.one * pulse,
-                    1f - Mathf.Exp(-12f * Time.deltaTime));
+                if (NodnarbSettings.ReducedMotionEnabled)
+                {
+                    signalGlow.localScale = signalGlowBaseScale;
+                }
+                else
+                {
+                    float pulse = 0.95f + Mathf.Sin(Time.time * 4.4f + phase) * 0.05f;
+                    signalGlow.localScale = Vector3.Lerp(signalGlow.localScale,
+                        signalGlowBaseScale * pulse,
+                        1f - Mathf.Exp(-12f * deltaTime));
+                }
             }
+            ApplyCardFlash(deltaTime);
 
             if (position.z < GameTheme.CaptainZ - 1.1f)
             {
                 alive = false;
                 game.UnregisterCard(this);
-                Destroy(gameObject);
+                game.ReleaseCard(this);
             }
         }
 
         private float PathOffset()
         {
+            if (NodnarbSettings.ReducedMotionEnabled)
+            {
+                return 0f;
+            }
+
             switch (pathPattern)
             {
                 case CardPathPattern.GentleDrift:
@@ -798,6 +1334,56 @@ namespace EscapeFromNodnarb
                     return Mathf.Sin(Time.time * 1.9f + phase) * 0.98f;
                 default:
                     return 0f;
+            }
+        }
+
+        private void ApplyCardFlash(float deltaTime)
+        {
+            if (accessibilityRenderers == null)
+            {
+                return;
+            }
+
+            if (visualFlashTimer <= 0f || NodnarbSettings.ReducedMotionEnabled)
+            {
+                if (visualFlashApplied)
+                {
+                    ApplyAccessibilitySettings();
+                }
+                return;
+            }
+
+            if (visualFlashApplied)
+            {
+                visualFlashTimer = Mathf.Max(0f, visualFlashTimer - deltaTime);
+                if (visualFlashTimer <= 0f)
+                {
+                    ApplyAccessibilitySettings();
+                }
+                return;
+            }
+
+            Color flashColor = kind == CardKind.Recruit ? GameTheme.AccessibleSignalBright : GameTheme.AccessibleWeapon;
+            for (int index = 0; index < accessibilityRenderers.Length; index++)
+            {
+                Renderer renderer = accessibilityRenderers[index];
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                MaterialPropertyBlock block = accessibilityColorBlock ?? new MaterialPropertyBlock();
+                block.Clear();
+                block.SetColor("_Color", Color.Lerp(Color.white, flashColor, 0.35f));
+                renderer.SetPropertyBlock(block);
+            }
+
+            visualFlashApplied = true;
+
+            visualFlashTimer = Mathf.Max(0f, visualFlashTimer - deltaTime);
+            if (visualFlashTimer <= 0f)
+            {
+                ApplyAccessibilitySettings();
             }
         }
 
@@ -815,10 +1401,10 @@ namespace EscapeFromNodnarb
             Color cardColor = accentColor;
             GameObject glowObject = PrimitiveFactory.Cube("CardSignalGlow", transform,
                 transform.position + new Vector3(0f, 0.92f, -0.08f), new Vector3(1.62f, 1.86f, 0.04f),
-                Color.Lerp(cardColor, GameTheme.Void, 0.38f));
+                Color.Lerp(cardColor, GameTheme.SurfaceGlassDeep, 0.38f));
             signalGlow = glowObject.transform;
             GameObject panelObject = PrimitiveFactory.Cube(kind + "Card", transform, transform.position + Vector3.up * 0.92f,
-                new Vector3(1.48f, 1.72f, 0.18f), GameTheme.Rule);
+                new Vector3(1.48f, 1.72f, 0.18f), GameTheme.SurfaceGlassDeep);
             panel = panelObject.transform;
             PrimitiveFactory.Cube("CardInset", transform, transform.position + new Vector3(0f, 0.92f, -0.13f),
                 new Vector3(1.18f, 1.38f, 0.08f), GameTheme.Surface);
@@ -830,6 +1416,15 @@ namespace EscapeFromNodnarb
                 new Vector3(0.07f, 0.86f, 0.05f), cardColor);
             PrimitiveFactory.Cube("CardSideSignalRight", transform, transform.position + new Vector3(0.66f, 0.92f, -0.20f),
                 new Vector3(0.07f, 0.86f, 0.05f), cardColor);
+            PrimitiveFactory.Cube("CardCenterRule", transform, transform.position + new Vector3(0f, 0.92f, -0.22f),
+                new Vector3(0.90f, 0.025f, 0.04f), Color.Lerp(cardColor, GameTheme.Rule, 0.42f));
+            for (int side = -1; side <= 1; side += 2)
+            {
+                GameObject corner = PrimitiveFactory.Cube("CardCornerSlash" + side, transform,
+                    transform.position + new Vector3(side * 0.48f, 1.54f, -0.23f),
+                    new Vector3(0.10f, 0.28f, 0.05f), cardColor);
+                corner.transform.rotation = Quaternion.Euler(0f, 0f, side * 45f);
+            }
 
             if (kind == CardKind.Weapon)
             {
@@ -839,6 +1434,10 @@ namespace EscapeFromNodnarb
                     new Vector3(0.12f, 0.28f, 0.08f), cardColor);
                 PrimitiveFactory.Cube("WeaponIconMuzzle", transform, transform.position + new Vector3(0.38f, 1.25f, -0.24f),
                     new Vector3(0.16f, 0.08f, 0.08f), cardColor);
+                PrimitiveFactory.Cube("WeaponIconScope", transform, transform.position + new Vector3(0.04f, 1.40f, -0.24f),
+                    new Vector3(0.22f, 0.06f, 0.07f), GameTheme.SignalCyan);
+                PrimitiveFactory.Cylinder("WeaponIconNode", transform, transform.position + new Vector3(0.52f, 1.25f, -0.24f),
+                    new Vector3(0.09f, 0.06f, 0.09f), GameTheme.SignalBright);
             }
             else
             {
@@ -852,19 +1451,83 @@ namespace EscapeFromNodnarb
                         transform.position + new Vector3(iconX, 1.16f, -0.24f),
                         new Vector3(0.16f, 0.26f, 0.09f), cardColor);
                 }
+                PrimitiveFactory.Cylinder("CrewIconBeacon", transform,
+                    transform.position + new Vector3(0f, 1.20f, -0.26f),
+                    new Vector3(0.07f, 0.22f, 0.07f), GameTheme.SignalCyan);
+                PrimitiveFactory.Sphere("CrewIconBeaconCore", transform,
+                    transform.position + new Vector3(0f, 1.38f, -0.26f),
+                    new Vector3(0.10f, 0.10f, 0.07f), GameTheme.SignalBright);
             }
 
             GameObject labelObject = new GameObject("Label");
             labelObject.transform.SetParent(transform, false);
-            labelObject.transform.localPosition = new Vector3(0f, 0.93f, -0.22f);
+            labelObject.transform.localPosition = new Vector3(0f, 0.63f, -0.22f);
             labelObject.transform.localRotation = Quaternion.identity;
-            TextMesh label = labelObject.AddComponent<TextMesh>();
+            label = labelObject.AddComponent<TextMesh>();
             label.text = DisplayLabel;
             label.anchor = TextAnchor.MiddleCenter;
             label.alignment = TextAlignment.Center;
-            label.fontSize = 48;
-            label.characterSize = 0.068f;
+            label.fontSize = 50;
+            label.characterSize = 0.047f;
+            label.fontStyle = FontStyle.Bold;
             label.color = cardColor;
+
+            visualRoot = new GameObject("CardVisualRoot").transform;
+            visualRoot.SetParent(transform, false);
+            for (int index = 0; index < transform.childCount; index++)
+            {
+                Transform child = transform.GetChild(index);
+                if (child != visualRoot)
+                {
+                    child.localScale *= VisualGeometryScale;
+                }
+            }
+
+            visualRoot.localScale = Vector3.one * VisualGeometryScale;
+            panelBaseScale = panel == null ? Vector3.one : panel.localScale;
+            signalGlowBaseScale = signalGlow == null ? Vector3.one : signalGlow.localScale;
+            accessibilityRenderers = GetComponentsInChildren<Renderer>(true);
+            accessibilityColorBlock = new MaterialPropertyBlock();
+            ApplyAccessibilitySettings();
+        }
+
+        public void ApplyAccessibilitySettings()
+        {
+            visualFlashApplied = false;
+            bool highContrast = NodnarbSettings.HighContrastEnabled;
+            Color accessibleColor = kind == CardKind.Weapon
+                ? GameTheme.AccessibleWeapon
+                : GameTheme.AccessibleSignalBright;
+
+            if (accessibilityRenderers != null)
+            {
+                for (int index = 0; index < accessibilityRenderers.Length; index++)
+                {
+                    Renderer renderer = accessibilityRenderers[index];
+                    if (renderer == null)
+                    {
+                        continue;
+                    }
+
+                    if (highContrast)
+                    {
+                        accessibilityColorBlock.Clear();
+                        accessibilityColorBlock.SetColor("_Color", accessibleColor);
+                        renderer.SetPropertyBlock(accessibilityColorBlock);
+                    }
+                    else
+                    {
+                        renderer.SetPropertyBlock(null);
+                    }
+                }
+            }
+
+            if (label != null)
+            {
+                label.color = highContrast ? accessibleColor : accentColor;
+            }
+
+            AccessibilityVisualApplied = highContrast;
         }
     }
 }

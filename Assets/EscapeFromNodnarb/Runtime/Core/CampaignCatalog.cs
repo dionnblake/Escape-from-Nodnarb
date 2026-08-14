@@ -59,6 +59,20 @@ namespace EscapeFromNodnarb
         Carrier
     }
 
+    public enum EcologyProfile
+    {
+        CrashNest,
+        CanyonAmbush,
+        SporeBloom,
+        SnowStalker,
+        RelayNest,
+        ShardSwarm,
+        BroodSurge,
+        NightPack,
+        BeaconSiege,
+        CarrierRing
+    }
+
     [Serializable]
     public sealed class LevelDefinition
     {
@@ -76,6 +90,7 @@ namespace EscapeFromNodnarb
         public CardPathPattern CardPath;
         public RouteShape Route;
         public BossBehavior BossBehavior;
+        public EcologyProfile Ecology;
         public float OpeningDelaySeconds = 0.65f;
         public float CardStartDelaySeconds = 3.2f;
         public float CardIntervalMinSeconds = 8.2f;
@@ -126,6 +141,7 @@ namespace EscapeFromNodnarb
                 "Gravel Maw", 66f, 0.14f, 1103, BiomeId.CrashGlass, WavePattern.RushLanes,
                 CardPathPattern.RailLock, RouteShape.WreckInterior, BossBehavior.Crusher)
             {
+                Ecology = EcologyProfile.CrashNest,
                 OpeningDelaySeconds = 0.72f,
                 CardStartDelaySeconds = 3.6f,
                 CardIntervalMinSeconds = 8.8f,
@@ -139,6 +155,7 @@ namespace EscapeFromNodnarb
                 "Canyon Brute", 68f, 0.22f, 2207, BiomeId.RustCanyon, WavePattern.ArmorColumns,
                 CardPathPattern.GentleDrift, RouteShape.CanyonBend, BossBehavior.Striker)
             {
+                Ecology = EcologyProfile.CanyonAmbush,
                 OpeningDelaySeconds = 0.90f,
                 CardStartDelaySeconds = 4.4f,
                 CardIntervalMinSeconds = 8.6f,
@@ -152,6 +169,7 @@ namespace EscapeFromNodnarb
                 "Bloom Stalker", 70f, 0.30f, 3301, BiomeId.SporeField, WavePattern.Crossfire,
                 CardPathPattern.WideSweep, RouteShape.UnknownWinding, BossBehavior.Barrager)
             {
+                Ecology = EcologyProfile.SporeBloom,
                 OpeningDelaySeconds = 0.82f,
                 CardStartDelaySeconds = 3.4f,
                 CardIntervalMinSeconds = 9.2f,
@@ -165,6 +183,7 @@ namespace EscapeFromNodnarb
                 "Whiteglass Howler", 72f, 0.39f, 4409, BiomeId.Snowline, WavePattern.SwarmPulse,
                 CardPathPattern.StaggeredDrift, RouteShape.SnowSwitchback, BossBehavior.Howler)
             {
+                Ecology = EcologyProfile.SnowStalker,
                 OpeningDelaySeconds = 0.72f,
                 CardStartDelaySeconds = 4.0f,
                 CardIntervalMinSeconds = 7.4f,
@@ -178,6 +197,7 @@ namespace EscapeFromNodnarb
                 "Relay Warden", 74f, 0.48f, 5519, BiomeId.SignalRuins, WavePattern.Crossfire,
                 CardPathPattern.RailLock, RouteShape.RelaySwerve, BossBehavior.Sentry)
             {
+                Ecology = EcologyProfile.RelayNest,
                 OpeningDelaySeconds = 0.96f,
                 CardStartDelaySeconds = 5.2f,
                 CardIntervalMinSeconds = 9.8f,
@@ -191,6 +211,7 @@ namespace EscapeFromNodnarb
                 "Shard Titan", 76f, 0.57f, 6607, BiomeId.CrystalFault, WavePattern.ArmorColumns,
                 CardPathPattern.WideSweep, RouteShape.CrystalShelf, BossBehavior.Carrier)
             {
+                Ecology = EcologyProfile.ShardSwarm,
                 OpeningDelaySeconds = 0.86f,
                 CardStartDelaySeconds = 3.7f,
                 CardIntervalMinSeconds = 8.4f,
@@ -204,6 +225,7 @@ namespace EscapeFromNodnarb
                 "Brood Engine", 78f, 0.66f, 7717, BiomeId.HiveTrench, WavePattern.SwarmPulse,
                 CardPathPattern.StaggeredDrift, RouteShape.HiveRun, BossBehavior.Barrager)
             {
+                Ecology = EcologyProfile.BroodSurge,
                 OpeningDelaySeconds = 0.68f,
                 CardStartDelaySeconds = 3.0f,
                 CardIntervalMinSeconds = 6.8f,
@@ -217,6 +239,7 @@ namespace EscapeFromNodnarb
                 "Night Howler", 81f, 0.75f, 8803, BiomeId.NightShelf, WavePattern.Crossfire,
                 CardPathPattern.GentleDrift, RouteShape.NightSlope, BossBehavior.Howler)
             {
+                Ecology = EcologyProfile.NightPack,
                 OpeningDelaySeconds = 1.05f,
                 CardStartDelaySeconds = 4.8f,
                 CardIntervalMinSeconds = 8.8f,
@@ -230,6 +253,7 @@ namespace EscapeFromNodnarb
                 "Signal Eater", 84f, 0.86f, 9901, BiomeId.BeaconPlain, WavePattern.SiegeMix,
                 CardPathPattern.WideSweep, RouteShape.BeaconApproach, BossBehavior.Striker)
             {
+                Ecology = EcologyProfile.BeaconSiege,
                 OpeningDelaySeconds = 0.76f,
                 CardStartDelaySeconds = 3.8f,
                 CardIntervalMinSeconds = 9.0f,
@@ -243,6 +267,7 @@ namespace EscapeFromNodnarb
                 "The Last Carrier", 90f, 1.00f, 10103, BiomeId.ExtractionRing, WavePattern.SiegeMix,
                 CardPathPattern.RailLock, RouteShape.ExtractionRing, BossBehavior.Carrier)
             {
+                Ecology = EcologyProfile.CarrierRing,
                 OpeningDelaySeconds = 0.90f,
                 CardStartDelaySeconds = 4.2f,
                 CardIntervalMinSeconds = 7.6f,
@@ -281,6 +306,7 @@ namespace EscapeFromNodnarb
                 "Recurring Carrier", 0f, 0.72f, seed, BiomeId.NightShelf, WavePattern.SiegeMix,
                 CardPathPattern.WideSweep, RouteShape.NightSlope, BossBehavior.Carrier)
             {
+                Ecology = EcologyProfile.NightPack,
                 OpeningDelaySeconds = 0.72f,
                 CardStartDelaySeconds = 3.6f,
                 CardIntervalMinSeconds = 7.2f,
@@ -301,17 +327,17 @@ namespace EscapeFromNodnarb
         {
             switch (route)
             {
-                case RouteShape.WreckInterior: return "SHIP DECK // TIGHT SHELF";
-                case RouteShape.CanyonBend: return "CRASH BASIN // BENT LANE";
-                case RouteShape.UnknownWinding: return "SPORE FIELD // WINDING LANE";
-                case RouteShape.SnowSwitchback: return "WHITEGLASS // SWITCHBACK";
+                case RouteShape.WreckInterior: return "SHIP DECK // BROKEN PASSAGE";
+                case RouteShape.CanyonBend: return "CRASH BASIN // WIND-CUT GULLY";
+                case RouteShape.UnknownWinding: return "SPORE FIELD // WINDING GROUND";
+                case RouteShape.SnowSwitchback: return "WHITEGLASS // SNOW SWITCHBACK";
                 case RouteShape.RelaySwerve: return "SILENT RUINS // RELAY SWERVE";
                 case RouteShape.CrystalShelf: return "CRYSTAL FAULT // SPLIT SHELF";
-                case RouteShape.HiveRun: return "HIVE TRENCH // RUNNING LINE";
-                case RouteShape.NightSlope: return "NIGHT SHELF // DESCENT";
-                case RouteShape.BeaconApproach: return "BEACON PLAIN // LONG APPROACH";
-                case RouteShape.ExtractionRing: return "EXTRACTION RING // HOLD THE LOOP";
-                default: return "UNKNOWN ROUTE // HOLD CENTER";
+                case RouteShape.HiveRun: return "HIVE TRENCH // BROOD CHANNEL";
+                case RouteShape.NightSlope: return "NIGHT SHELF // ROCK DESCENT";
+                case RouteShape.BeaconApproach: return "BEACON PLAIN // OPEN WILDS";
+                case RouteShape.ExtractionRing: return "EXTRACTION RING // HOLD THE LOOP IN THE WILD";
+                default: return "UNKNOWN TERRAIN // FIND A PASS";
             }
         }
 
@@ -394,6 +420,24 @@ namespace EscapeFromNodnarb
                 case BiomeId.BeaconPlain: return "BEACON PLAIN // OPEN GROUND";
                 case BiomeId.ExtractionRing: return "EXTRACTION RING // RESCUE ZONE";
                 default: return "UNKNOWN TERRAIN // HOLD CENTER";
+            }
+        }
+
+        public static string EcologyBrief(EcologyProfile ecology)
+        {
+            switch (ecology)
+            {
+                case EcologyProfile.CrashNest: return "ECOLOGY // HULL-NEST RUSHERS";
+                case EcologyProfile.CanyonAmbush: return "ECOLOGY // CANYON AMBUSH PACK";
+                case EcologyProfile.SporeBloom: return "ECOLOGY // SPORE BLOOM CONTACTS";
+                case EcologyProfile.SnowStalker: return "ECOLOGY // WHITEGLASS STALKERS";
+                case EcologyProfile.RelayNest: return "ECOLOGY // RELAY-NEST SPITTERS";
+                case EcologyProfile.ShardSwarm: return "ECOLOGY // SHARD-SWARM CARRIER";
+                case EcologyProfile.BroodSurge: return "ECOLOGY // BROOD SURGE";
+                case EcologyProfile.NightPack: return "ECOLOGY // NIGHT PACK HUNT";
+                case EcologyProfile.BeaconSiege: return "ECOLOGY // BEACON SIEGE";
+                case EcologyProfile.CarrierRing: return "ECOLOGY // CARRIER RING";
+                default: return "ECOLOGY // UNKNOWN CONTACTS";
             }
         }
 

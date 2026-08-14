@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -14,6 +15,8 @@ namespace EscapeFromNodnarb
         public int Score;
         public int Kills;
         public int Salvage;
+        public int WeaponPickups;
+        public int RecruitPickups;
         public int Squad;
         public int Overflow;
         public float Elapsed;
@@ -31,6 +34,7 @@ namespace EscapeFromNodnarb
         private RectTransform resultScreen;
         private RectTransform loadoutScreen;
         private RectTransform levelScreen;
+        private CanvasGroup titleInteraction;
 
         private Text titleContinueText;
         private Text titleProgressText;
@@ -39,6 +43,8 @@ namespace EscapeFromNodnarb
         private Text storyRoute;
         private Text storyBiome;
         private Text storyMessage;
+        private RectTransform storyFrameOnePanel;
+        private RectTransform storyFrameTwoPanel;
         private Text hudHealth;
         private Image hudHealthFill;
         private Text hudSector;
@@ -48,7 +54,17 @@ namespace EscapeFromNodnarb
         private Text hudScore;
         private Text hudThreat;
         private Text inputHint;
+        private Text leftCardRail;
+        private Text rightCardRail;
         private Text cardChoiceHint;
+        private RectTransform cardChoiceBand;
+        private Image cardWeaponPanel;
+        private Image cardCrewPanel;
+        private Image cardWeaponAccent;
+        private Image cardCrewAccent;
+        private Image cardChoiceCenterRule;
+        private Text cardWeaponTitle;
+        private Text cardCrewTitle;
         private Text onboardingHint;
         private Text combatWarning;
         private Text abilityText;
@@ -60,7 +76,8 @@ namespace EscapeFromNodnarb
         private float pickupFeedbackTimer;
         private float combatWarningTimer;
         private float onboardingTimer;
-        private const float OnboardingDuration = 6.8f;
+        private int onboardingStep;
+        private const float OnboardingDuration = 12f;
 
         private Text resultStatus;
         private Text resultReason;
@@ -69,6 +86,7 @@ namespace EscapeFromNodnarb
         private Text resultSquad;
         private Text resultScore;
         private Text resultSalvage;
+        private Text resultPickups;
         private Button resultNextButton;
         private Text resultNextText;
 
@@ -90,6 +108,17 @@ namespace EscapeFromNodnarb
         private Text loadoutSuit;
         private Text loadoutSuitState;
         private Text loadoutCredits;
+        private Text loadoutSound;
+        private Text loadoutMusic;
+        private Text loadoutHaptics;
+        private Text loadoutCaptions;
+        private Text loadoutHighContrast;
+        private Text loadoutReducedMotion;
+        private Text audioCaption;
+        private float audioCaptionTimer;
+        private float gameplayTextRefreshTimer;
+        private readonly Dictionary<Button, ColorBlock> defaultButtonColors = new Dictionary<Button, ColorBlock>();
+        private readonly Dictionary<Text, Color> defaultTextColors = new Dictionary<Text, Color>();
 
         public void Initialize(NodnarbGame owner)
         {
@@ -103,22 +132,32 @@ namespace EscapeFromNodnarb
             game = owner;
             canvasRoot = UiFactory.CreateCanvas(owner.transform);
 
-            // Android must get regular frames while the runtime-only UI is built.
-            // Keeping the title first makes the launch path visible even while
-            // the remaining screens finish construction over later frames.
+            // Android must get a visible first screen before the remaining
+            // runtime-only UI is constructed.
             BuildTitle();
+            SetTitleInteractive(false);
             yield return null;
+        }
+
+        public IEnumerator ContinueInitializeRoutine()
+        {
             BuildStory();
+            storyScreen.gameObject.SetActive(false);
             yield return null;
             BuildHud();
+            gameHud.gameObject.SetActive(false);
             yield return null;
             BuildPause();
+            pauseScreen.gameObject.SetActive(false);
             yield return null;
             BuildResult();
+            resultScreen.gameObject.SetActive(false);
             yield return null;
             BuildLevelSelect();
+            levelScreen.gameObject.SetActive(false);
             yield return null;
             BuildLoadout();
+            loadoutScreen.gameObject.SetActive(false);
             HideAll();
         }
 
@@ -134,12 +173,30 @@ namespace EscapeFromNodnarb
             HideAll();
         }
 
+        public void SetTitleInteractive(bool interactive)
+        {
+            if (titleInteraction == null)
+            {
+                return;
+            }
+
+            titleInteraction.interactable = interactive;
+            titleInteraction.blocksRaycasts = interactive;
+        }
+
         public void ShowTitle(ProgressData progress)
         {
             HideAll();
             titleScreen.gameObject.SetActive(true);
-            titleContinueText.text = progress.UnlockedLevel > 1 ? "CONTINUE // SECTOR " + progress.UnlockedLevel.ToString("00") : "BEGIN DISTRESS RUN";
-            titleProgressText.text = "CAMPAIGN " + progress.HighestCompletedLevel().ToString("00") + "/10   //   SALVAGE " + progress.Credits.ToString("0000");
+            titleContinueText.text = progress.PendingRun != null
+                ? "RESUME SIGNAL"
+                : progress.UnlockedLevel > 1 ? "CONTINUE // SECTOR " + progress.UnlockedLevel.ToString("00") : "BEGIN DISTRESS RUN";
+            titleProgressText.text = progress.PendingRun != null
+                ? "PAUSED RUN // TAP TO RESUME   //   CAMPAIGN " + progress.HighestCompletedLevel().ToString("00") + "/10"
+                : "CAMPAIGN " + progress.HighestCompletedLevel().ToString("00") + "/10   //   RUNS "
+                    + (progress.CampaignRuns + progress.EndlessRuns).ToString("000") + "   //   REPLAYS "
+                    + progress.ReplayRuns.ToString("000");
+            ApplyAccessibilitySettings();
         }
 
         public void ShowStory(LevelDefinition level, bool endless)
@@ -152,8 +209,17 @@ namespace EscapeFromNodnarb
                 + "\nPATH // " + CampaignCatalog.RouteBeat(level);
             storyBiome.text = "BIOME // " + CampaignCatalog.BiomeBrief(level.Biome)
                 + "\nOBJECTIVE // " + CampaignCatalog.ObjectiveBrief(level)
+                + "\n" + CampaignCatalog.EcologyBrief(level.Ecology)
                 + "\n" + CampaignCatalog.BossBrief(level);
-            storyMessage.text = "MILESTONE // " + CampaignCatalog.MilestoneBrief(level) + "\n\n" + level.RadioMessage;
+            StoryboardBeat beat = endless ? StoryboardCatalog.Endless : StoryboardCatalog.Get(level.Index);
+            storyMessage.text = "MILESTONE // " + CampaignCatalog.MilestoneBrief(level)
+                + "\n\n" + beat.FrameOne
+                + "\n" + level.RadioMessage;
+            BiomePalette palette = GameTheme.GetBiome(level.Biome);
+            string frameCode = endless ? "ENDLESS" : level.Index.ToString("00");
+            RefreshStoryboardPanel(storyFrameOnePanel, palette, false, "FRAME 01", beat.FrameOne, frameCode);
+            RefreshStoryboardPanel(storyFrameTwoPanel, palette, true, "FRAME 02", beat.FrameTwo, frameCode);
+            ApplyAccessibilitySettings();
         }
 
         public void ShowGameplay(bool showOnboarding)
@@ -165,8 +231,40 @@ namespace EscapeFromNodnarb
             HidePickupFeedback();
             HideCombatWarning();
             onboardingTimer = showOnboarding ? OnboardingDuration : 0f;
+            onboardingStep = 0;
             onboardingHint.gameObject.SetActive(showOnboarding);
             cardChoiceHint.gameObject.SetActive(false);
+            cardChoiceBand.gameObject.SetActive(false);
+            audioCaptionTimer = 0f;
+            audioCaption.gameObject.SetActive(false);
+            gameplayTextRefreshTimer = 0f;
+            ApplyAccessibilitySettings();
+        }
+
+        public bool NoteOnboardingAction(int action)
+        {
+            if (onboardingTimer <= 0f)
+            {
+                return false;
+            }
+
+            if (action == 0 && onboardingStep == 0)
+            {
+                onboardingStep = 1;
+            }
+            else if (action == 1 && onboardingStep <= 1)
+            {
+                onboardingStep = 2;
+            }
+            else if (action == 2 && onboardingStep >= 2)
+            {
+                onboardingStep = 3;
+                onboardingTimer = 0f;
+                onboardingHint.gameObject.SetActive(false);
+                return true;
+            }
+
+            return false;
         }
 
         public void ShowPause()
@@ -184,13 +282,15 @@ namespace EscapeFromNodnarb
             HideAll();
             resultScreen.gameObject.SetActive(true);
             resultStatus.text = data.Victory ? "EXTRACTION SECURED" : data.Endless ? "SIGNAL ENDED" : "RUN FAILED";
-            resultStatus.color = data.Victory ? GameTheme.Signal : GameTheme.Danger;
+            resultStatus.color = data.Victory ? GameTheme.AccessibleSignal : GameTheme.AccessibleDanger;
             resultReason.text = ReasonCopy(data.Reason, data.Endless);
             resultTime.text = FormatTime(data.Elapsed);
             resultKills.text = data.Kills.ToString("000");
             resultSquad.text = data.Squad.ToString("00") + (data.Overflow > 0 ? " +" + data.Overflow : string.Empty);
             resultScore.text = data.Score.ToString("000000");
             resultSalvage.text = "+" + data.Salvage.ToString("000");
+            resultPickups.text = "CREW " + data.RecruitPickups.ToString("00")
+                + " // WEAPON " + data.WeaponPickups.ToString("00");
             resultNextButton.onClick.RemoveAllListeners();
             if (data.CanAdvance)
             {
@@ -209,6 +309,7 @@ namespace EscapeFromNodnarb
                 resultNextButton.gameObject.SetActive(false);
                 resultNextText.text = data.Level >= 10 ? "FINAL SIGNAL" : "NEXT SECTOR";
             }
+            ApplyAccessibilitySettings();
         }
 
         public void ShowLevelSelect(ProgressData progress, int selectedLevel)
@@ -216,6 +317,7 @@ namespace EscapeFromNodnarb
             HideAll();
             levelScreen.gameObject.SetActive(true);
             RefreshLevelSelect(progress, selectedLevel);
+            ApplyAccessibilitySettings();
         }
 
         public void RefreshLevelSelect(ProgressData progress, int selectedLevel)
@@ -263,6 +365,7 @@ namespace EscapeFromNodnarb
             HideAll();
             loadoutScreen.gameObject.SetActive(true);
             RefreshLoadout(progress);
+            RefreshSettings();
         }
 
         public void RefreshLoadout(ProgressData progress)
@@ -280,62 +383,232 @@ namespace EscapeFromNodnarb
             loadoutCredits.text = "LOCAL SALVAGE   " + progress.Credits.ToString("0000") + "\nPOWER IS EARNED, NEVER SOLD";
         }
 
-        public void UpdateGameplay(RunModel model, LevelDefinition level, float elapsed, bool endless, bool bossActive, int volleyCount, bool cardChoiceActive, float relativeX)
+        public void RefreshSettings()
         {
-            hudHealth.text = "CAPTAIN " + Mathf.CeilToInt(model.CaptainHealth).ToString("000");
+            if (loadoutSound == null)
+            {
+                return;
+            }
+
+            loadoutSound.text = NodnarbSettings.Indicator("SFX", NodnarbSettings.SoundEnabled);
+            loadoutMusic.text = NodnarbSettings.Indicator("MUSIC", NodnarbSettings.MusicEnabled);
+            loadoutHaptics.text = NodnarbSettings.Indicator("HAPTICS", NodnarbSettings.HapticsEnabled);
+            loadoutCaptions.text = NodnarbSettings.Indicator("CAPTIONS", NodnarbSettings.CaptionsEnabled);
+            loadoutHighContrast.text = NodnarbSettings.Indicator("CONTRAST", NodnarbSettings.HighContrastEnabled);
+            loadoutReducedMotion.text = NodnarbSettings.Indicator("MOTION", !NodnarbSettings.ReducedMotionEnabled);
+            loadoutReducedMotion.color = NodnarbSettings.ReducedMotionEnabled ? GameTheme.Muted : GameTheme.Text;
+            if (audioCaption != null && !NodnarbSettings.CaptionsEnabled)
+            {
+                audioCaptionTimer = 0f;
+                audioCaption.gameObject.SetActive(false);
+            }
+
+            ApplyAccessibilitySettings();
+        }
+
+        private void ApplyAccessibilitySettings()
+        {
+            if (canvasRoot == null)
+            {
+                return;
+            }
+
+            bool highContrast = NodnarbSettings.HighContrastEnabled;
+            Button[] buttons = canvasRoot.GetComponentsInChildren<Button>(true);
+            for (int index = 0; index < buttons.Length; index++)
+            {
+                Button button = buttons[index];
+                if (button == null)
+                {
+                    continue;
+                }
+
+                if (!defaultButtonColors.ContainsKey(button))
+                {
+                    defaultButtonColors.Add(button, button.colors);
+                }
+
+                ColorBlock colors = defaultButtonColors[button];
+                if (highContrast)
+                {
+                    colors.normalColor = GameTheme.AccessibleSignal;
+                    colors.highlightedColor = GameTheme.AccessibleSignalBright;
+                    colors.pressedColor = GameTheme.AccessibleSignalBright;
+                    colors.selectedColor = GameTheme.Text;
+                    colors.disabledColor = GameTheme.Rule;
+                    colors.colorMultiplier = 1f;
+                }
+                button.colors = highContrast ? colors : defaultButtonColors[button];
+            }
+
+            Text[] texts = canvasRoot.GetComponentsInChildren<Text>(true);
+            for (int index = 0; index < texts.Length; index++)
+            {
+                Text text = texts[index];
+                if (text == null)
+                {
+                    continue;
+                }
+
+                if (!defaultTextColors.ContainsKey(text))
+                {
+                    defaultTextColors.Add(text, text.color);
+                }
+
+                text.color = highContrast ? GameTheme.Text : defaultTextColors[text];
+            }
+
+            if (hudHealthFill != null)
+            {
+                hudHealthFill.color = GameTheme.AccessibleSignal;
+            }
+            if (hudThreat != null && hudThreat.gameObject.activeSelf)
+            {
+                hudThreat.color = GameTheme.AccessibleDanger;
+            }
+            if (cardChoiceHint != null && cardChoiceHint.gameObject.activeSelf)
+            {
+                cardChoiceHint.color = GameTheme.AccessibleSignalBright;
+            }
+            if (cardWeaponAccent != null)
+            {
+                cardWeaponAccent.color = highContrast ? GameTheme.Text : GameTheme.WeaponUpgrade;
+            }
+            if (cardCrewAccent != null)
+            {
+                cardCrewAccent.color = highContrast ? Color.white : GameTheme.SignalBright;
+            }
+            if (cardChoiceCenterRule != null)
+            {
+                cardChoiceCenterRule.color = highContrast ? Color.white : GameTheme.Rule;
+            }
+            if (combatWarning != null && combatWarning.gameObject.activeSelf)
+            {
+                combatWarning.color = GameTheme.AccessibleDanger;
+            }
+            if (audioCaption != null && audioCaption.gameObject.activeSelf)
+            {
+                audioCaption.color = GameTheme.AccessibleSignalBright;
+            }
+            if (abilityButton != null && abilityButton.image != null && !abilityButton.interactable)
+            {
+                abilityButton.image.color = highContrast ? GameTheme.Text : GameTheme.SurfaceRaised;
+            }
+        }
+
+        public void UpdateGameplay(RunModel model, LevelDefinition level, float elapsed, bool endless, bool bossActive, int volleyCount, bool cardChoiceActive, float relativeX, float cardTimer)
+        {
             hudHealthFill.fillAmount = Mathf.Clamp01(model.CaptainHealth / RunModel.MaxCaptainHealth);
-            hudHealthFill.color = model.CaptainHealth > 30f ? GameTheme.Signal : GameTheme.Danger;
-            hudSector.text = endless ? "DEAD SIGNAL" : level.Sector + " // " + level.Name.ToUpperInvariant();
-            hudTimer.text = endless ? "T+ " + FormatTime(elapsed) : FormatTime(Mathf.Max(0f, level.DurationSeconds - elapsed));
-            hudSquad.text = "SQUAD " + model.SoldierCount.ToString("00") + "/12" + (model.OverflowRecruits > 0 ? "   OVERCHARGE +" + model.OverflowRecruits : string.Empty);
-            hudPower.text = "PWR " + (model.WeaponLevel + 1).ToString("00") + "   //   RATE " + model.ShotsPerSecond.ToString("0.0") + "/S";
-            hudScore.text = "SCORE " + model.Score.ToString("000000");
-            inputHint.text = "VOLLEY " + Mathf.Max(0, volleyCount).ToString("00") + "  //  AUTO-FIRE  //  DRAG TO MOVE";
-            hudThreat.text = bossActive ? "HEAVY CONTACT // " + level.BossName.ToUpperInvariant() + " // HOLD THE LINE" : string.Empty;
-            hudThreat.color = bossActive ? GameTheme.Danger : GameTheme.Muted;
+            hudHealthFill.color = model.CaptainHealth > 30f ? GameTheme.AccessibleSignal : GameTheme.AccessibleDanger;
+
+            gameplayTextRefreshTimer -= Time.unscaledDeltaTime;
+            bool refreshGameplayText = gameplayTextRefreshTimer <= 0f;
+            if (refreshGameplayText)
+            {
+                gameplayTextRefreshTimer = 0.10f;
+                hudHealth.text = "CAPTAIN " + Mathf.CeilToInt(model.CaptainHealth).ToString("000");
+                hudSector.text = endless ? "DEAD SIGNAL" : level.Sector + " // " + level.Name.ToUpperInvariant();
+                hudTimer.text = endless ? "T+ " + FormatTime(elapsed) : FormatTime(Mathf.Max(0f, level.DurationSeconds - elapsed));
+                hudSquad.text = "SQUAD " + model.SoldierCount.ToString("00") + "/12" + (model.OverflowRecruits > 0 ? "   OVERCHARGE +" + model.OverflowRecruits : string.Empty);
+                hudPower.text = "PWR " + (model.WeaponLevel + 1).ToString("00") + "   //   RATE " + model.ShotsPerSecond.ToString("0.0") + "/S";
+                hudScore.text = "SCORE " + model.Score.ToString("000000");
+                string cardHint = cardChoiceActive
+                    ? "SELECT A SIGNAL"
+                    : cardTimer <= 1.8f
+                        ? "CARD WINDOW IN " + Mathf.CeilToInt(Mathf.Max(0f, cardTimer)).ToString("00") + "s"
+                        : "DRAG TO MOVE";
+                inputHint.text = "VOLLEY " + Mathf.Max(0, volleyCount).ToString("00")
+                    + "  //  AUTO-FIRE  //  " + cardHint;
+                hudThreat.text = bossActive ? "BOSS CONTACT // " + level.BossName.ToUpperInvariant() : string.Empty;
+                hudThreat.color = bossActive ? GameTheme.AccessibleDanger : GameTheme.Muted;
+            }
 
             if (cardChoiceActive)
             {
-                cardChoiceHint.text = CardChoice.Hint(relativeX);
+                string hint = CardChoice.Hint(relativeX);
+                if (cardChoiceHint.text != hint)
+                {
+                    cardChoiceHint.text = hint;
+                }
                 cardChoiceHint.color = relativeX <= -CardChoice.SideThreshold
-                    ? GameTheme.WeaponUpgrade
-                    : relativeX >= CardChoice.SideThreshold ? GameTheme.SignalBright : GameTheme.Text;
+                    ? GameTheme.AccessibleWeapon
+                    : relativeX >= CardChoice.SideThreshold ? GameTheme.AccessibleSignalBright : GameTheme.Text;
+                bool weaponFocused = relativeX <= -CardChoice.SideThreshold;
+                bool crewFocused = relativeX >= CardChoice.SideThreshold;
+                if (cardWeaponPanel != null)
+                {
+                    cardWeaponPanel.color = UiFactory.Alpha(
+                        weaponFocused ? Color.Lerp(GameTheme.SurfaceChrome, GameTheme.WeaponUpgrade, 0.42f) : GameTheme.SurfaceChrome,
+                        weaponFocused ? 0.98f : 0.86f);
+                }
+                if (cardCrewPanel != null)
+                {
+                    cardCrewPanel.color = UiFactory.Alpha(
+                        crewFocused ? Color.Lerp(GameTheme.SurfaceChrome, GameTheme.Signal, 0.42f) : GameTheme.SurfaceChrome,
+                        crewFocused ? 0.98f : 0.86f);
+                }
+                if (cardWeaponTitle != null)
+                {
+                    cardWeaponTitle.color = weaponFocused ? GameTheme.AccessibleWeapon : GameTheme.WeaponUpgrade;
+                }
+                if (cardCrewTitle != null)
+                {
+                    cardCrewTitle.color = crewFocused ? GameTheme.AccessibleSignalBright : GameTheme.SignalBright;
+                }
                 cardChoiceHint.gameObject.SetActive(true);
+                cardChoiceBand.gameObject.SetActive(true);
+                cardWeaponAccent.gameObject.SetActive(true);
+                cardCrewAccent.gameObject.SetActive(true);
+                inputHint.gameObject.SetActive(false);
+                leftCardRail.gameObject.SetActive(false);
+                rightCardRail.gameObject.SetActive(false);
             }
             else
             {
                 cardChoiceHint.gameObject.SetActive(false);
+                cardChoiceBand.gameObject.SetActive(false);
+                cardWeaponAccent.gameObject.SetActive(false);
+                cardCrewAccent.gameObject.SetActive(false);
+                inputHint.gameObject.SetActive(true);
+                leftCardRail.gameObject.SetActive(true);
+                rightCardRail.gameObject.SetActive(true);
             }
 
-            if (onboardingTimer > 0f)
+            if (onboardingTimer > 0f && onboardingStep < 3)
             {
                 onboardingTimer = Mathf.Max(0f, onboardingTimer - Time.unscaledDeltaTime);
-                float shown = OnboardingDuration - onboardingTimer;
-                onboardingHint.text = shown < 2.25f
+                onboardingHint.text = onboardingStep == 0
                     ? "MOVE  //  DRAG CAPTAIN LEFT OR RIGHT"
-                    : shown < 4.55f
+                    : onboardingStep == 1
                         ? "AUTO-FIRE  //  LINE UP ENEMIES OR ONE CARD"
                         : "OVERDRIVE  //  TAP WHEN THE LINE GETS HOT";
                 onboardingHint.gameObject.SetActive(onboardingTimer > 0f);
             }
+            else if (onboardingHint != null)
+            {
+                onboardingHint.gameObject.SetActive(false);
+            }
 
             if (model.RapidFireActive)
             {
-                abilityText.text = "OVERDRIVE  " + model.RapidFireRemaining.ToString("0.0") + "s";
+                if (refreshGameplayText)
+                {
+                    abilityText.text = "OVERDRIVE  " + model.RapidFireRemaining.ToString("0.0") + "s";
+                }
                 abilityButton.interactable = false;
-                abilityButton.image.color = GameTheme.SignalBright;
+                abilityButton.image.color = NodnarbSettings.HighContrastEnabled ? GameTheme.AccessibleSignalBright : GameTheme.SignalButtonBright;
             }
             else if (model.RapidFireReady)
             {
                 abilityText.text = "OVERDRIVE  READY";
                 abilityButton.interactable = true;
-                abilityButton.image.color = GameTheme.Signal;
+                abilityButton.image.color = NodnarbSettings.HighContrastEnabled ? GameTheme.AccessibleSignal : GameTheme.SignalButton;
             }
             else
             {
                 abilityText.text = "RECHARGE  " + Mathf.CeilToInt(model.RapidFireCooldownRemaining).ToString("00") + "s";
                 abilityButton.interactable = false;
-                abilityButton.image.color = GameTheme.SurfaceRaised;
+                abilityButton.image.color = NodnarbSettings.HighContrastEnabled ? GameTheme.Text : GameTheme.SurfaceRaised;
             }
 
             if (hitOverlayAlpha > 0f)
@@ -367,11 +640,24 @@ namespace EscapeFromNodnarb
                     HideCombatWarning();
                 }
             }
+
+            if (audioCaptionTimer > 0f)
+            {
+                audioCaptionTimer = Mathf.Max(0f, audioCaptionTimer - Time.unscaledDeltaTime);
+                Color color = GameTheme.AccessibleSignalBright;
+                color.a = Mathf.Clamp01(audioCaptionTimer / 0.30f);
+                audioCaption.color = color;
+                if (audioCaptionTimer <= 0f)
+                {
+                    audioCaption.gameObject.SetActive(false);
+                }
+            }
         }
 
         public void ShowPickup(CardKind kind, RunModel model)
         {
-            pickupFeedbackColor = kind == CardKind.Recruit ? GameTheme.SignalBright : GameTheme.WeaponUpgrade;
+            gameplayTextRefreshTimer = 0f;
+            pickupFeedbackColor = kind == CardKind.Recruit ? GameTheme.AccessibleSignalBright : GameTheme.AccessibleWeapon;
             pickupFeedback.text = kind == CardKind.Recruit
                 ? "CREW +1 // SQUAD " + model.SoldierCount.ToString("00") + "/12 // FIREPOWER UP"
                 : "WEAPON +1 // PWR " + (model.WeaponLevel + 1).ToString("00") + " // RATE " + model.ShotsPerSecond.ToString("0.0") + "/S";
@@ -387,27 +673,56 @@ namespace EscapeFromNodnarb
             SetOverlayAlpha(hitOverlayAlpha);
         }
 
+        public void ShowAudioCaption(string caption)
+        {
+            if (!NodnarbSettings.CaptionsEnabled || audioCaption == null || string.IsNullOrEmpty(caption))
+            {
+                return;
+            }
+
+            audioCaption.text = "CAPTION // " + caption;
+            audioCaption.color = GameTheme.AccessibleSignalBright;
+            audioCaptionTimer = 1.40f;
+            audioCaption.gameObject.SetActive(true);
+        }
+
         public void ShowBossTelegraph(string bossName)
         {
-            combatWarning.text = "WARNING // " + bossName.ToUpperInvariant() + " // INCOMING VOLLEY";
+            gameplayTextRefreshTimer = 0f;
+            combatWarning.text = "INCOMING VOLLEY // " + bossName.ToUpperInvariant();
             combatWarningTimer = 0.72f;
-            combatWarning.color = GameTheme.Danger;
+            combatWarning.color = GameTheme.AccessibleDanger;
             combatWarning.gameObject.SetActive(true);
         }
 
         public void HideAll()
         {
-            titleScreen.gameObject.SetActive(false);
-            storyScreen.gameObject.SetActive(false);
-            gameHud.gameObject.SetActive(false);
-            pauseScreen.gameObject.SetActive(false);
-            resultScreen.gameObject.SetActive(false);
-            loadoutScreen.gameObject.SetActive(false);
-            levelScreen.gameObject.SetActive(false);
+            if (titleScreen != null) titleScreen.gameObject.SetActive(false);
+            if (storyScreen != null) storyScreen.gameObject.SetActive(false);
+            if (gameHud != null) gameHud.gameObject.SetActive(false);
+            if (pauseScreen != null) pauseScreen.gameObject.SetActive(false);
+            if (resultScreen != null) resultScreen.gameObject.SetActive(false);
+            if (loadoutScreen != null) loadoutScreen.gameObject.SetActive(false);
+            if (levelScreen != null) levelScreen.gameObject.SetActive(false);
             HideCombatWarning();
             if (cardChoiceHint != null)
             {
                 cardChoiceHint.gameObject.SetActive(false);
+            }
+
+            if (cardChoiceBand != null)
+            {
+                cardChoiceBand.gameObject.SetActive(false);
+            }
+
+            if (cardWeaponAccent != null)
+            {
+                cardWeaponAccent.gameObject.SetActive(false);
+            }
+
+            if (cardCrewAccent != null)
+            {
+                cardCrewAccent.gameObject.SetActive(false);
             }
 
             if (onboardingHint != null)
@@ -416,6 +731,7 @@ namespace EscapeFromNodnarb
             }
 
             onboardingTimer = 0f;
+            onboardingStep = 0;
         }
 
         private void HidePickupFeedback()
@@ -439,6 +755,7 @@ namespace EscapeFromNodnarb
         private void BuildTitle()
         {
             titleScreen = UiFactory.Panel(canvasRoot, "TitleScreen", GameTheme.Void);
+            titleInteraction = titleScreen.gameObject.AddComponent<CanvasGroup>();
             if (!BuildTitleArtwork(titleScreen))
             {
                 BuildSignalIllustration(titleScreen);
@@ -522,25 +839,123 @@ namespace EscapeFromNodnarb
             UiFactory.Anchor(storyRoute.rectTransform, new Vector2(0f, 0.53f), new Vector2(1f, 0.61f), new Vector2(54f, 0f), new Vector2(-54f, 0f));
             storyBiome = UiFactory.Label(storyScreen, "Biome", string.Empty, 17, GameTheme.Signal, TextAnchor.MiddleLeft);
             UiFactory.Anchor(storyBiome.rectTransform, new Vector2(0f, 0.44f), new Vector2(1f, 0.53f), new Vector2(54f, 0f), new Vector2(-54f, 0f));
+            Image storyTrim = UiFactory.Rule(storyScreen, "StoryTrim", UiFactory.Alpha(GameTheme.Signal, 0.82f));
+            UiFactory.Anchor(storyTrim.rectTransform, new Vector2(0.05f, 0.635f), new Vector2(0.95f, 0.642f), Vector2.zero, Vector2.zero);
+
+            storyFrameOnePanel = BuildStoryboardPanel(storyScreen, "FrameOnePanel");
+            UiFactory.Anchor(storyFrameOnePanel, new Vector2(0.05f, 0.28f), new Vector2(0.475f, 0.45f), Vector2.zero, Vector2.zero);
+            storyFrameTwoPanel = BuildStoryboardPanel(storyScreen, "FrameTwoPanel");
+            UiFactory.Anchor(storyFrameTwoPanel, new Vector2(0.525f, 0.28f), new Vector2(0.95f, 0.45f), Vector2.zero, Vector2.zero);
 
             RectTransform radio = UiFactory.Panel(storyScreen, "Radio", UiFactory.Alpha(GameTheme.Surface, 0.96f));
-            UiFactory.Anchor(radio, new Vector2(0f, 0.16f), new Vector2(1f, 0.40f), new Vector2(48f, 0f), new Vector2(-48f, 0f));
+            UiFactory.Anchor(radio, new Vector2(0f, 0.10f), new Vector2(1f, 0.28f), new Vector2(48f, 0f), new Vector2(-48f, 0f));
             Text radioLabel = UiFactory.Label(radio, "RadioLabel", "INCOMING RADIO", 22, GameTheme.Signal, TextAnchor.MiddleLeft);
             UiFactory.Anchor(radioLabel.rectTransform, new Vector2(0f, 0.72f), new Vector2(1f, 0.92f), new Vector2(34f, 0f), new Vector2(-34f, 0f));
-            storyMessage = UiFactory.Label(radio, "Message", string.Empty, 34, GameTheme.Text, TextAnchor.UpperLeft);
-            storyMessage.lineSpacing = 1.08f;
-            UiFactory.Anchor(storyMessage.rectTransform, new Vector2(0f, 0.12f), new Vector2(1f, 0.72f), new Vector2(34f, 0f), new Vector2(-34f, 0f));
+            storyMessage = UiFactory.Label(radio, "Message", string.Empty, 23, GameTheme.Text, TextAnchor.UpperLeft);
+            storyMessage.lineSpacing = 1.0f;
+            UiFactory.Anchor(storyMessage.rectTransform, new Vector2(0f, 0.08f), new Vector2(1f, 0.70f), new Vector2(34f, 0f), new Vector2(-34f, 0f));
 
             Button deploy = UiFactory.ActionButton(storyScreen, "Deploy", "DEPLOY SQUAD", game.BeginPendingRun, true);
-            UiFactory.Anchor((RectTransform)deploy.transform, new Vector2(0f, 0.08f), new Vector2(1f, 0.15f), new Vector2(48f, 0f), new Vector2(-48f, 0f));
+            UiFactory.Anchor((RectTransform)deploy.transform, new Vector2(0f, 0.045f), new Vector2(1f, 0.09f), new Vector2(48f, 0f), new Vector2(-48f, 0f));
             Button back = UiFactory.ActionButton(storyScreen, "Back", "BACK", game.ShowTitle, false);
-            UiFactory.Anchor((RectTransform)back.transform, new Vector2(0f, 0.02f), new Vector2(1f, 0.065f), new Vector2(48f, 0f), new Vector2(-48f, 0f));
+            UiFactory.Anchor((RectTransform)back.transform, new Vector2(0f, 0.012f), new Vector2(1f, 0.036f), new Vector2(48f, 0f), new Vector2(-48f, 0f));
+        }
+
+        private static RectTransform BuildStoryboardPanel(Transform parent, string name)
+        {
+            RectTransform panel = UiFactory.Panel(parent, name, UiFactory.Alpha(GameTheme.Surface, 0.96f), false);
+            Image inner = UiFactory.Rule(panel, "PanelInner", UiFactory.Alpha(GameTheme.SurfaceGlassDeep, 0.78f));
+            UiFactory.Anchor(inner.rectTransform, new Vector2(0.025f, 0.055f), new Vector2(0.975f, 0.95f), Vector2.zero, Vector2.zero);
+            Image rim = UiFactory.Rule(panel, "PanelRim", GameTheme.Rule);
+            UiFactory.Anchor(rim.rectTransform, Vector2.zero, new Vector2(1f, 0.035f), Vector2.zero, Vector2.zero);
+            Image horizon = UiFactory.Rule(panel, "PanelHorizon", GameTheme.CanyonHighlight);
+            UiFactory.Anchor(horizon.rectTransform, new Vector2(0.04f, 0.19f), new Vector2(0.96f, 0.22f), Vector2.zero, Vector2.zero);
+            Image ground = UiFactory.Rule(panel, "PanelGround", GameTheme.Void);
+            UiFactory.Anchor(ground.rectTransform, new Vector2(0.03f, 0.04f), new Vector2(0.97f, 0.20f), Vector2.zero, Vector2.zero);
+            Image terrainLeft = UiFactory.Rule(panel, "PanelTerrainLeft", GameTheme.CanyonHighlight);
+            UiFactory.Anchor(terrainLeft.rectTransform, new Vector2(0.04f, 0.20f), new Vector2(0.28f, 0.58f), Vector2.zero, Vector2.zero);
+            terrainLeft.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -18f);
+            Image terrainRight = UiFactory.Rule(panel, "PanelTerrainRight", GameTheme.AlienViolet);
+            UiFactory.Anchor(terrainRight.rectTransform, new Vector2(0.72f, 0.20f), new Vector2(0.96f, 0.67f), Vector2.zero, Vector2.zero);
+            terrainRight.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 20f);
+            Image terrainCut = UiFactory.Rule(panel, "PanelTerrainCut", GameTheme.SurfaceGlassDeep);
+            UiFactory.Anchor(terrainCut.rectTransform, new Vector2(0.18f, 0.22f), new Vector2(0.38f, 0.48f), Vector2.zero, Vector2.zero);
+            terrainCut.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -24f);
+            Image threat = UiFactory.Rule(panel, "PanelThreat", GameTheme.AlienGlow);
+            UiFactory.Anchor(threat.rectTransform, new Vector2(0.40f, 0.29f), new Vector2(0.62f, 0.62f), Vector2.zero, Vector2.zero);
+            threat.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            Image threatCore = UiFactory.Rule(panel, "PanelThreatCore", GameTheme.AlienGlow);
+            UiFactory.Anchor(threatCore.rectTransform, new Vector2(0.46f, 0.40f), new Vector2(0.56f, 0.50f), Vector2.zero, Vector2.zero);
+            threatCore.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            Image signal = UiFactory.Rule(panel, "PanelSignal", GameTheme.SignalBright);
+            UiFactory.Anchor(signal.rectTransform, new Vector2(0.48f, 0.22f), new Vector2(0.52f, 0.82f), Vector2.zero, Vector2.zero);
+            Image signalTop = UiFactory.Rule(panel, "PanelSignalTop", GameTheme.SignalBright);
+            UiFactory.Anchor(signalTop.rectTransform, new Vector2(0.34f, 0.76f), new Vector2(0.66f, 0.80f), Vector2.zero, Vector2.zero);
+            Image signalCore = UiFactory.Rule(panel, "PanelSignalCore", GameTheme.SignalBright);
+            UiFactory.Anchor(signalCore.rectTransform, new Vector2(0.455f, 0.72f), new Vector2(0.545f, 0.81f), Vector2.zero, Vector2.zero);
+            signalCore.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            Image scan = UiFactory.Rule(panel, "PanelScan", UiFactory.Alpha(GameTheme.SignalBright, 0.44f));
+            UiFactory.Anchor(scan.rectTransform, new Vector2(0.06f, 0.31f), new Vector2(0.94f, 0.325f), Vector2.zero, Vector2.zero);
+            scan.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -4f);
+            Image foreground = UiFactory.Rule(panel, "PanelForeground", GameTheme.Void);
+            UiFactory.Anchor(foreground.rectTransform, new Vector2(0.06f, 0.06f), new Vector2(0.94f, 0.18f), Vector2.zero, Vector2.zero);
+            foreground.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 3f);
+            Image dustOne = UiFactory.Rule(panel, "PanelDustOne", GameTheme.SignalBright);
+            UiFactory.Anchor(dustOne.rectTransform, new Vector2(0.17f, 0.52f), new Vector2(0.20f, 0.55f), Vector2.zero, Vector2.zero);
+            dustOne.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 18f);
+            Image dustTwo = UiFactory.Rule(panel, "PanelDustTwo", GameTheme.AlienGlow);
+            UiFactory.Anchor(dustTwo.rectTransform, new Vector2(0.78f, 0.42f), new Vector2(0.805f, 0.445f), Vector2.zero, Vector2.zero);
+            dustTwo.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -22f);
+            Text caption = UiFactory.Label(panel, "Caption", "FRAME", 13, GameTheme.Signal, TextAnchor.MiddleLeft);
+            UiFactory.Anchor(caption.rectTransform, new Vector2(0.04f, 0.82f), new Vector2(0.96f, 0.98f), Vector2.zero, Vector2.zero);
+            Text title = UiFactory.Label(panel, "Title", string.Empty, 15, GameTheme.Text, TextAnchor.MiddleLeft);
+            UiFactory.Anchor(title.rectTransform, new Vector2(0.04f, 0.62f), new Vector2(0.96f, 0.78f), Vector2.zero, Vector2.zero);
+            return panel;
+        }
+
+        private static void RefreshStoryboardPanel(RectTransform panel, BiomePalette palette, bool threatFrame, string frameLabel, string title, string frameCode)
+        {
+            if (panel == null)
+            {
+                return;
+            }
+
+            panel.GetComponent<Image>().color = UiFactory.Alpha(Color.Lerp(palette.Sky, palette.Ground, 0.32f), 0.96f);
+            SetPanelImage(panel, "PanelInner", UiFactory.Alpha(Color.Lerp(palette.Sky, GameTheme.Void, 0.72f), 0.84f));
+            SetPanelImage(panel, "PanelRim", threatFrame ? GameTheme.AlienGlow : GameTheme.Signal);
+            SetPanelImage(panel, "PanelHorizon", palette.Terrain);
+            SetPanelImage(panel, "PanelGround", Color.Lerp(palette.Sky, GameTheme.Void, 0.38f));
+            SetPanelImage(panel, "PanelTerrainLeft", palette.Terrain);
+            SetPanelImage(panel, "PanelTerrainRight", threatFrame ? GameTheme.AlienViolet : palette.Detail);
+            SetPanelImage(panel, "PanelTerrainCut", Color.Lerp(palette.Sky, palette.Terrain, 0.32f));
+            SetPanelImage(panel, "PanelThreat", threatFrame ? GameTheme.AlienGlow : Color.Lerp(palette.Detail, GameTheme.AlienViolet, 0.42f));
+            SetPanelImage(panel, "PanelThreatCore", threatFrame ? GameTheme.Danger : palette.Detail);
+            SetPanelImage(panel, "PanelSignal", threatFrame ? GameTheme.Danger : GameTheme.SignalBright);
+            SetPanelImage(panel, "PanelSignalTop", threatFrame ? GameTheme.Danger : GameTheme.SignalBright);
+            SetPanelImage(panel, "PanelSignalCore", threatFrame ? GameTheme.Danger : GameTheme.SignalBright);
+            SetPanelImage(panel, "PanelScan", UiFactory.Alpha(threatFrame ? GameTheme.Danger : GameTheme.SignalBright, 0.46f));
+            SetPanelImage(panel, "PanelForeground", Color.Lerp(palette.Sky, GameTheme.Void, 0.72f));
+            SetPanelImage(panel, "PanelDustOne", UiFactory.Alpha(threatFrame ? GameTheme.Danger : GameTheme.SignalBright, 0.72f));
+            SetPanelImage(panel, "PanelDustTwo", UiFactory.Alpha(threatFrame ? GameTheme.AlienGlow : palette.Detail, 0.76f));
+            Text caption = panel.Find("Caption").GetComponent<Text>();
+            caption.text = frameLabel + "  //  " + frameCode;
+            caption.color = threatFrame ? GameTheme.Danger : GameTheme.Signal;
+            panel.Find("Title").GetComponent<Text>().text = title;
+        }
+
+        private static void SetPanelImage(Transform panel, string childName, Color color)
+        {
+            Transform child = panel.Find(childName);
+            if (child != null)
+            {
+                child.GetComponent<Image>().color = color;
+            }
         }
 
         private void BuildHud()
         {
             gameHud = UiFactory.Panel(canvasRoot, "GameHud", Color.clear, false);
-            RectTransform top = UiFactory.Panel(gameHud, "TopRail", UiFactory.Alpha(GameTheme.Void, 0.90f));
+            RectTransform top = UiFactory.Panel(gameHud, "TopRail", UiFactory.Alpha(GameTheme.SurfaceGlassDeep, 0.82f));
             UiFactory.Anchor(top, new Vector2(0f, 0.925f), Vector2.one, new Vector2(14f, 0f), new Vector2(-14f, 0f));
             Image topSignal = UiFactory.Rule(top, "TopSignal", GameTheme.Signal);
             UiFactory.Anchor(topSignal.rectTransform, Vector2.zero, new Vector2(1f, 0.035f), Vector2.zero, Vector2.zero);
@@ -557,13 +972,17 @@ namespace EscapeFromNodnarb
             UiFactory.Anchor(hudSector.rectTransform, new Vector2(0.32f, 0f), new Vector2(0.64f, 1f), Vector2.zero, Vector2.zero);
             hudTimer = UiFactory.Label(top, "Timer", "01:06", 25, GameTheme.Text, TextAnchor.MiddleRight);
             UiFactory.Anchor(hudTimer.rectTransform, new Vector2(0.64f, 0f), new Vector2(0.82f, 1f), Vector2.zero, Vector2.zero);
-            Button pause = UiFactory.ActionButton(top, "Pause", "PAUSE", game.TogglePause, false, 15);
-            UiFactory.Anchor((RectTransform)pause.transform, new Vector2(0.84f, 0.20f), new Vector2(0.985f, 0.80f), Vector2.zero, Vector2.zero);
+            Button pause = UiFactory.ActionButton(top, "Pause", "PAUSE", game.TogglePause, false, 14);
+            UiFactory.Anchor((RectTransform)pause.transform, new Vector2(0.875f, 0.31f), new Vector2(0.985f, 0.73f), Vector2.zero, Vector2.zero);
 
-            hudThreat = UiFactory.Label(gameHud, "Threat", string.Empty, 25, GameTheme.Danger, TextAnchor.MiddleCenter);
-            UiFactory.Anchor(hudThreat.rectTransform, new Vector2(0.10f, 0.865f), new Vector2(0.90f, 0.91f), Vector2.zero, Vector2.zero);
-            combatWarning = UiFactory.Label(gameHud, "CombatWarning", string.Empty, 20, GameTheme.Danger, TextAnchor.MiddleCenter);
-            UiFactory.Anchor(combatWarning.rectTransform, new Vector2(0.08f, 0.805f), new Vector2(0.92f, 0.845f), Vector2.zero, Vector2.zero);
+            RectTransform threatBand = UiFactory.Panel(gameHud, "ThreatBand", UiFactory.Alpha(GameTheme.SurfaceGlassDeep, 0.34f), false);
+            UiFactory.Anchor(threatBand, new Vector2(0.06f, 0.862f), new Vector2(0.94f, 0.916f), Vector2.zero, Vector2.zero);
+            hudThreat = UiFactory.Label(gameHud, "Threat", string.Empty, 22, GameTheme.Danger, TextAnchor.MiddleCenter);
+            UiFactory.Anchor(hudThreat.rectTransform, new Vector2(0.08f, 0.868f), new Vector2(0.92f, 0.91f), Vector2.zero, Vector2.zero);
+            RectTransform warningBand = UiFactory.Panel(gameHud, "WarningBand", UiFactory.Alpha(GameTheme.SurfaceGlassDeep, 0.40f), false);
+            UiFactory.Anchor(warningBand, new Vector2(0.08f, 0.807f), new Vector2(0.92f, 0.854f), Vector2.zero, Vector2.zero);
+            combatWarning = UiFactory.Label(gameHud, "CombatWarning", string.Empty, 18, GameTheme.Danger, TextAnchor.MiddleCenter);
+            UiFactory.Anchor(combatWarning.rectTransform, new Vector2(0.10f, 0.812f), new Vector2(0.90f, 0.849f), Vector2.zero, Vector2.zero);
             HideCombatWarning();
 
             pickupFeedback = UiFactory.Label(gameHud, "PickupFeedback", string.Empty, 26, GameTheme.Signal, TextAnchor.MiddleCenter);
@@ -571,17 +990,17 @@ namespace EscapeFromNodnarb
             UiFactory.Anchor(pickupFeedback.rectTransform, new Vector2(0.06f, 0.745f), new Vector2(0.94f, 0.79f), Vector2.zero, Vector2.zero);
             HidePickupFeedback();
 
-            Text leftRail = UiFactory.Label(gameHud, "LeftRail", "<  WEAPON LANE", 16, GameTheme.WeaponUpgrade, TextAnchor.MiddleLeft);
-            UiFactory.Anchor(leftRail.rectTransform, new Vector2(0.035f, 0.79f), new Vector2(0.35f, 0.83f), Vector2.zero, Vector2.zero);
-            Text rightRail = UiFactory.Label(gameHud, "RightRail", "CREW LANE  >", 16, GameTheme.SignalBright, TextAnchor.MiddleRight);
-            UiFactory.Anchor(rightRail.rectTransform, new Vector2(0.65f, 0.79f), new Vector2(0.965f, 0.83f), Vector2.zero, Vector2.zero);
+            leftCardRail = UiFactory.Label(gameHud, "LeftRail", "<  WEAPON +1", 18, GameTheme.WeaponUpgrade, TextAnchor.MiddleLeft);
+            UiFactory.Anchor(leftCardRail.rectTransform, new Vector2(0.035f, 0.79f), new Vector2(0.35f, 0.83f), Vector2.zero, Vector2.zero);
+            rightCardRail = UiFactory.Label(gameHud, "RightRail", "+1 CREW  >", 18, GameTheme.SignalBright, TextAnchor.MiddleRight);
+            UiFactory.Anchor(rightCardRail.rectTransform, new Vector2(0.65f, 0.79f), new Vector2(0.965f, 0.83f), Vector2.zero, Vector2.zero);
 
-            RectTransform actionRail = UiFactory.Panel(gameHud, "ActionRail", UiFactory.Alpha(GameTheme.Void, 0.84f), false);
+            RectTransform actionRail = UiFactory.Panel(gameHud, "ActionRail", UiFactory.Alpha(GameTheme.SurfaceGlassDeep, 0.72f), false);
             UiFactory.Anchor(actionRail, new Vector2(0.015f, 0.012f), new Vector2(0.985f, 0.108f), Vector2.zero, Vector2.zero);
             Image actionRule = UiFactory.Rule(actionRail, "ActionRule", GameTheme.Rule);
             UiFactory.Anchor(actionRule.rectTransform, Vector2.zero, new Vector2(1f, 0.018f), Vector2.zero, Vector2.zero);
 
-            RectTransform stats = UiFactory.Panel(gameHud, "RunStats", UiFactory.Alpha(GameTheme.Void, 0.88f));
+            RectTransform stats = UiFactory.Panel(gameHud, "RunStats", UiFactory.Alpha(GameTheme.SurfaceGlass, 0.78f));
             UiFactory.Anchor(stats, new Vector2(0.035f, 0.025f), new Vector2(0.555f, 0.085f), Vector2.zero, Vector2.zero);
             Image statsSignal = UiFactory.Rule(stats, "StatsSignal", GameTheme.Signal);
             UiFactory.Anchor(statsSignal.rectTransform, Vector2.zero, new Vector2(0.012f, 1f), Vector2.zero, Vector2.zero);
@@ -594,9 +1013,46 @@ namespace EscapeFromNodnarb
             inputHint = UiFactory.Label(gameHud, "InputHint", "VOLLEY 03  //  AUTO-FIRE ACTIVE", 15, GameTheme.Muted, TextAnchor.MiddleCenter);
             UiFactory.Anchor(inputHint.rectTransform, new Vector2(0.08f, 0.116f), new Vector2(0.92f, 0.141f), Vector2.zero, Vector2.zero);
 
-            cardChoiceHint = UiFactory.Label(gameHud, "CardChoiceHint", string.Empty, 17, GameTheme.Text, TextAnchor.MiddleCenter);
-            UiFactory.Anchor(cardChoiceHint.rectTransform, new Vector2(0.04f, 0.695f), new Vector2(0.96f, 0.735f), Vector2.zero, Vector2.zero);
+            cardChoiceBand = UiFactory.Panel(gameHud, "CardChoiceBand", UiFactory.Alpha(GameTheme.SurfaceGlassDeep, 0.88f), false);
+            UiFactory.Anchor(cardChoiceBand, new Vector2(0.035f, 0.655f), new Vector2(0.965f, 0.765f), Vector2.zero, Vector2.zero);
+            RectTransform weaponPanel = UiFactory.Panel(cardChoiceBand, "WeaponCard", UiFactory.Alpha(GameTheme.SurfaceChrome, 0.86f), false);
+            UiFactory.Anchor(weaponPanel, new Vector2(0.025f, 0.10f), new Vector2(0.425f, 0.90f), Vector2.zero, Vector2.zero);
+            cardWeaponPanel = weaponPanel.GetComponent<Image>();
+            Outline weaponTrim = weaponPanel.gameObject.AddComponent<Outline>();
+            weaponTrim.effectColor = UiFactory.Alpha(GameTheme.WeaponUpgrade, 0.72f);
+            weaponTrim.effectDistance = new Vector2(1f, -1f);
+            weaponTrim.useGraphicAlpha = true;
+            cardWeaponTitle = UiFactory.Label(weaponPanel, "Title", "WEAPON  +1", 19, GameTheme.WeaponUpgrade, TextAnchor.MiddleCenter);
+            UiFactory.Anchor(cardWeaponTitle.rectTransform, new Vector2(0.06f, 0.30f), new Vector2(0.94f, 0.78f), Vector2.zero, Vector2.zero);
+            Text weaponMeta = UiFactory.Label(weaponPanel, "Meta", "LEFT SIGNAL", 11, GameTheme.Muted, TextAnchor.MiddleCenter);
+            UiFactory.Anchor(weaponMeta.rectTransform, new Vector2(0.06f, 0.08f), new Vector2(0.94f, 0.29f), Vector2.zero, Vector2.zero);
+            RectTransform crewPanel = UiFactory.Panel(cardChoiceBand, "CrewCard", UiFactory.Alpha(GameTheme.SurfaceChrome, 0.86f), false);
+            UiFactory.Anchor(crewPanel, new Vector2(0.575f, 0.10f), new Vector2(0.975f, 0.90f), Vector2.zero, Vector2.zero);
+            cardCrewPanel = crewPanel.GetComponent<Image>();
+            Outline crewTrim = crewPanel.gameObject.AddComponent<Outline>();
+            crewTrim.effectColor = UiFactory.Alpha(GameTheme.SignalBright, 0.72f);
+            crewTrim.effectDistance = new Vector2(1f, -1f);
+            crewTrim.useGraphicAlpha = true;
+            cardCrewTitle = UiFactory.Label(crewPanel, "Title", "+1  CREW", 19, GameTheme.SignalBright, TextAnchor.MiddleCenter);
+            UiFactory.Anchor(cardCrewTitle.rectTransform, new Vector2(0.06f, 0.30f), new Vector2(0.94f, 0.78f), Vector2.zero, Vector2.zero);
+            Text crewMeta = UiFactory.Label(crewPanel, "Meta", "RIGHT SIGNAL", 11, GameTheme.Muted, TextAnchor.MiddleCenter);
+            UiFactory.Anchor(crewMeta.rectTransform, new Vector2(0.06f, 0.08f), new Vector2(0.94f, 0.29f), Vector2.zero, Vector2.zero);
+            cardChoiceCenterRule = UiFactory.Rule(cardChoiceBand, "ChoiceSpine", UiFactory.Alpha(GameTheme.Rule, 0.92f));
+            UiFactory.Anchor(cardChoiceCenterRule.rectTransform, new Vector2(0.495f, 0.16f), new Vector2(0.505f, 0.84f), Vector2.zero, Vector2.zero);
+            cardWeaponAccent = UiFactory.Rule(cardChoiceBand, "WeaponAccent", GameTheme.WeaponUpgrade);
+            UiFactory.Anchor(cardWeaponAccent.rectTransform, new Vector2(0.008f, 0.10f), new Vector2(0.014f, 0.90f), Vector2.zero, Vector2.zero);
+            cardCrewAccent = UiFactory.Rule(cardChoiceBand, "CrewAccent", GameTheme.SignalBright);
+            UiFactory.Anchor(cardCrewAccent.rectTransform, new Vector2(0.986f, 0.10f), new Vector2(0.992f, 0.90f), Vector2.zero, Vector2.zero);
+            cardChoiceHint = UiFactory.Label(gameHud, "CardChoiceHint", string.Empty, 16, GameTheme.Text, TextAnchor.MiddleCenter);
+            UiFactory.Anchor(cardChoiceHint.rectTransform, new Vector2(0.18f, 0.675f), new Vector2(0.82f, 0.745f), Vector2.zero, Vector2.zero);
             cardChoiceHint.gameObject.SetActive(false);
+            cardChoiceBand.gameObject.SetActive(false);
+            cardWeaponAccent.gameObject.SetActive(false);
+            cardCrewAccent.gameObject.SetActive(false);
+
+            audioCaption = UiFactory.Label(gameHud, "AudioCaption", string.Empty, 16, GameTheme.SignalBright, TextAnchor.MiddleCenter);
+            UiFactory.Anchor(audioCaption.rectTransform, new Vector2(0.05f, 0.645f), new Vector2(0.95f, 0.675f), Vector2.zero, Vector2.zero);
+            audioCaption.gameObject.SetActive(false);
 
             onboardingHint = UiFactory.Label(gameHud, "OnboardingHint", string.Empty, 23, GameTheme.Text, TextAnchor.MiddleCenter);
             UiFactory.Anchor(onboardingHint.rectTransform, new Vector2(0.06f, 0.585f), new Vector2(0.94f, 0.645f), Vector2.zero, Vector2.zero);
@@ -604,8 +1060,8 @@ namespace EscapeFromNodnarb
 
             abilityButton = UiFactory.ActionButton(gameHud, "RapidFire", "OVERDRIVE  READY", game.ActivateRapidFire, true);
             abilityText = abilityButton.GetComponentInChildren<Text>();
-            abilityText.fontSize = 21;
-            UiFactory.Anchor((RectTransform)abilityButton.transform, new Vector2(0.59f, 0.025f), new Vector2(0.965f, 0.085f), Vector2.zero, Vector2.zero);
+            abilityText.fontSize = 18;
+            UiFactory.Anchor((RectTransform)abilityButton.transform, new Vector2(0.60f, 0.028f), new Vector2(0.965f, 0.078f), Vector2.zero, Vector2.zero);
 
             hitOverlay = UiFactory.Rule(gameHud, "DamageOverlay", Color.clear);
             UiFactory.Stretch(hitOverlay.rectTransform);
@@ -644,6 +1100,7 @@ namespace EscapeFromNodnarb
             resultSquad = AddResultRow(sheet, 2, "FINAL SQUAD", "00");
             resultScore = AddResultRow(sheet, 3, "SCORE", "000000");
             resultSalvage = AddResultRow(sheet, 4, "SALVAGE", "+000");
+            resultPickups = AddResultRow(sheet, 5, "PICKUPS", "CREW 00 // WEAPON 00");
 
             resultNextButton = UiFactory.ActionButton(resultScreen, "Next", "NEXT SECTOR", game.AdvanceAfterResult, true);
             resultNextText = resultNextButton.GetComponentInChildren<Text>();
@@ -749,6 +1206,24 @@ namespace EscapeFromNodnarb
             loadoutScreen = UiFactory.Panel(canvasRoot, "Loadout", UiFactory.Alpha(GameTheme.Void, 0.94f));
             Text header = UiFactory.Label(loadoutScreen, "Header", "FIELD LOADOUT", 30, GameTheme.Signal, TextAnchor.MiddleLeft);
             UiFactory.Anchor(header.rectTransform, new Vector2(0f, 0.89f), new Vector2(1f, 0.96f), new Vector2(54f, 0f), new Vector2(-54f, 0f));
+            Button sound = UiFactory.ActionButton(loadoutScreen, "SoundSetting", string.Empty, game.ToggleSound, false, 13);
+            loadoutSound = sound.GetComponentInChildren<Text>();
+            UiFactory.Anchor((RectTransform)sound.transform, new Vector2(0.52f, 0.895f), new Vector2(0.66f, 0.955f), Vector2.zero, Vector2.zero);
+            Button music = UiFactory.ActionButton(loadoutScreen, "MusicSetting", string.Empty, game.ToggleMusic, false, 13);
+            loadoutMusic = music.GetComponentInChildren<Text>();
+            UiFactory.Anchor((RectTransform)music.transform, new Vector2(0.67f, 0.895f), new Vector2(0.81f, 0.955f), Vector2.zero, Vector2.zero);
+            Button haptics = UiFactory.ActionButton(loadoutScreen, "HapticsSetting", string.Empty, game.ToggleHaptics, false, 13);
+            loadoutHaptics = haptics.GetComponentInChildren<Text>();
+            UiFactory.Anchor((RectTransform)haptics.transform, new Vector2(0.82f, 0.895f), new Vector2(0.985f, 0.955f), Vector2.zero, Vector2.zero);
+            Button captions = UiFactory.ActionButton(loadoutScreen, "CaptionsSetting", string.Empty, game.ToggleCaptions, false, 13);
+            loadoutCaptions = captions.GetComponentInChildren<Text>();
+            UiFactory.Anchor((RectTransform)captions.transform, new Vector2(0.05f, 0.835f), new Vector2(0.35f, 0.885f), Vector2.zero, Vector2.zero);
+            Button highContrast = UiFactory.ActionButton(loadoutScreen, "HighContrastSetting", string.Empty, game.ToggleHighContrast, false, 13);
+            loadoutHighContrast = highContrast.GetComponentInChildren<Text>();
+            UiFactory.Anchor((RectTransform)highContrast.transform, new Vector2(0.36f, 0.835f), new Vector2(0.65f, 0.885f), Vector2.zero, Vector2.zero);
+            Button reducedMotion = UiFactory.ActionButton(loadoutScreen, "ReducedMotionSetting", string.Empty, game.ToggleReducedMotion, false, 13);
+            loadoutReducedMotion = reducedMotion.GetComponentInChildren<Text>();
+            UiFactory.Anchor((RectTransform)reducedMotion.transform, new Vector2(0.66f, 0.835f), new Vector2(0.95f, 0.885f), Vector2.zero, Vector2.zero);
 
             RectTransform weaponPanel = UiFactory.Panel(loadoutScreen, "WeaponPanel", GameTheme.Surface);
             UiFactory.Anchor(weaponPanel, new Vector2(0f, 0.52f), new Vector2(1f, 0.83f), new Vector2(54f, 0f), new Vector2(-54f, 0f));
@@ -786,7 +1261,7 @@ namespace EscapeFromNodnarb
 
         private static Text AddResultRow(RectTransform parent, int index, string label, string initialValue)
         {
-            const int rows = 5;
+            const int rows = 6;
             float rowHeight = 1f / rows;
             float top = 1f - index * rowHeight;
             float bottom = top - rowHeight;

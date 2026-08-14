@@ -9,6 +9,12 @@ namespace EscapeFromNodnarb
         private readonly Transform owner;
         private GameObject root;
 
+        public int RuntimeRendererCount { get; private set; }
+
+        public int RuntimeMaterialCount { get; private set; }
+
+        public string LastVisualBudgetReport { get; private set; }
+
         public ProceduralWorld(Transform ownerTransform)
         {
             owner = ownerTransform;
@@ -24,13 +30,14 @@ namespace EscapeFromNodnarb
             camera.backgroundColor = palette.Sky;
             camera.clearFlags = CameraClearFlags.SolidColor;
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = Color.Lerp(palette.Terrain, GameTheme.Text, 0.14f);
+            RenderSettings.ambientLight = Color.Lerp(palette.Terrain, GameTheme.Text, 0.22f);
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
             RenderSettings.fogColor = palette.Sky;
-            RenderSettings.fogStartDistance = 13f;
-            RenderSettings.fogEndDistance = 31f;
+            RenderSettings.fogStartDistance = 18f;
+            RenderSettings.fogEndDistance = 38f;
 
+            BuildGroundBed(level, palette);
             BuildLane(level, palette);
             BuildRouteCenterline(level, palette);
             BuildRouteSignature(level, palette);
@@ -58,6 +65,8 @@ namespace EscapeFromNodnarb
             {
                 BuildDistantBeacon(palette);
             }
+
+            RefreshVisualBudget();
         }
 
         public void Clear()
@@ -67,6 +76,47 @@ namespace EscapeFromNodnarb
                 UnityEngine.Object.Destroy(root);
                 root = null;
             }
+
+            RuntimeRendererCount = 0;
+            RuntimeMaterialCount = 0;
+            LastVisualBudgetReport = string.Empty;
+        }
+
+        private void RefreshVisualBudget()
+        {
+            if (root == null)
+            {
+                RuntimeRendererCount = 0;
+                RuntimeMaterialCount = 0;
+                LastVisualBudgetReport = string.Empty;
+                return;
+            }
+
+            Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+            RuntimeRendererCount = renderers.Length;
+            HashSet<Material> materials = new HashSet<Material>();
+            for (int index = 0; index < renderers.Length; index++)
+            {
+                if (renderers[index] == null)
+                {
+                    continue;
+                }
+
+                Material[] sharedMaterials = renderers[index].sharedMaterials;
+                for (int materialIndex = 0; materialIndex < sharedMaterials.Length; materialIndex++)
+                {
+                    if (sharedMaterials[materialIndex] != null)
+                    {
+                        materials.Add(sharedMaterials[materialIndex]);
+                    }
+                }
+            }
+
+            RuntimeMaterialCount = materials.Count;
+            LastVisualBudgetReport = "NODNARB_WORLD_BUDGET renderers=" + RuntimeRendererCount
+                + " materials=" + RuntimeMaterialCount
+                + " cached_materials=" + PrimitiveFactory.MaterialCacheCount;
+            Debug.Log(LastVisualBudgetReport);
         }
 
         private void BuildTerrain(LevelDefinition level, BiomePalette palette)
@@ -107,63 +157,69 @@ namespace EscapeFromNodnarb
 
         private void BuildLane(LevelDefinition level, BiomePalette palette)
         {
-            Color lane = Color.Lerp(palette.Ground, palette.Terrain, 0.24f);
-            Color plate = Color.Lerp(lane, palette.Detail, 0.16f);
-            Color shoulder = Color.Lerp(palette.Terrain, palette.Ground, 0.20f);
-            Color edge = Color.Lerp(palette.Detail, GameTheme.CanyonHighlight, 0.28f);
-            Color routeBreak = Color.Lerp(palette.Sky, palette.Detail, 0.26f);
-            for (int segment = 0; segment < 12; segment++)
+            // The playable route is open alien ground, not a manufactured road.
+            // Broad, irregular patches overlap just enough to hide the seams while
+            // scattered stones and growth break the eye's expectation of lanes.
+            Color soil = Color.Lerp(palette.Ground, palette.Sky, 0.16f);
+            Color soilLight = Color.Lerp(palette.Ground, palette.Terrain, 0.32f);
+            Color fracture = Color.Lerp(palette.Sky, palette.Detail, 0.30f);
+            System.Random random = new System.Random(level.Seed ^ 0x47524F);
+            for (int segment = 0; segment < 14; segment++)
             {
-                float z = -4.1f + segment * 2.72f;
+                float z = -5.0f + segment * 2.35f + Range(random, -0.28f, 0.28f);
                 float centerX = LaneRoute.CenterX(level.Route, z);
                 Quaternion rotation = Quaternion.Euler(0f, LaneRoute.HeadingDegrees(level.Route, z), 0f);
-                Vector3 center = new Vector3(centerX, -0.32f, z);
-                PrimitiveFactory.Cube("ArenaSegment", root.transform, center,
-                    new Vector3(9.15f, 0.58f, 3.18f), lane).transform.rotation = rotation;
-                PrimitiveFactory.Cube("LanePlate", root.transform, center + Vector3.up * 0.01f,
-                    new Vector3(8.60f, 0.05f, 2.86f), plate).transform.rotation = rotation;
+                Vector3 center = new Vector3(centerX + Range(random, -0.18f, 0.18f), -0.36f, z);
+                GameObject ground = PrimitiveFactory.Sphere("AlienGroundPatch", root.transform, center,
+                    new Vector3(Range(random, 8.4f, 10.6f), Range(random, 0.30f, 0.46f), Range(random, 2.78f, 3.54f)), soil);
+                ground.transform.rotation = rotation * Quaternion.Euler(0f, Range(random, -7f, 7f), Range(random, -3f, 3f));
+                AddFacet(ground.transform, new Vector3(0.68f, 0.12f, 0.22f), new Vector3(0.22f, 0.08f, 0.48f),
+                    Color.Lerp(soil, palette.Terrain, 0.40f), 0.22f, 24f, -8f);
+                AddFacet(ground.transform, new Vector3(-0.58f, 0.09f, -0.28f), new Vector3(0.30f, 0.06f, 0.36f),
+                    Color.Lerp(soil, palette.Sky, 0.28f), -0.18f, -18f, 7f);
 
-                Vector3 leftShoulder = center + rotation * Vector3.right * -4.9f + Vector3.up * 0.27f;
-                GameObject left = PrimitiveFactory.Cube("LeftShoulder", root.transform, leftShoulder,
-                    new Vector3(1.0f, 0.18f, 3.18f), shoulder);
-                left.transform.rotation = rotation * Quaternion.Euler(0f, 0f, -8f);
-                Vector3 rightShoulder = center + rotation * Vector3.right * 4.9f + Vector3.up * 0.27f;
-                GameObject right = PrimitiveFactory.Cube("RightShoulder", root.transform, rightShoulder,
-                    new Vector3(1.0f, 0.18f, 3.18f), shoulder);
-                right.transform.rotation = rotation * Quaternion.Euler(0f, 0f, 8f);
-
-                Vector3 leftGuide = center + rotation * Vector3.right * -4.42f + Vector3.up * 0.33f;
-                PrimitiveFactory.Cube("LeftGuide", root.transform, leftGuide,
-                    new Vector3(0.08f, 0.04f, 3.18f), edge).transform.rotation = rotation;
-                Vector3 rightGuide = center + rotation * Vector3.right * 4.42f + Vector3.up * 0.33f;
-                PrimitiveFactory.Cube("RightGuide", root.transform, rightGuide,
-                    new Vector3(0.08f, 0.04f, 3.18f), edge).transform.rotation = rotation;
-                Vector3 leftInset = center + rotation * Vector3.right * -3.35f + Vector3.up * 0.055f;
-                PrimitiveFactory.Cube("LaneInset", root.transform, leftInset,
-                    new Vector3(0.04f, 0.02f, 2.68f), Color.Lerp(palette.Sky, edge, 0.42f)).transform.rotation = rotation;
-                Vector3 rightInset = center + rotation * Vector3.right * 3.35f + Vector3.up * 0.055f;
-                PrimitiveFactory.Cube("LaneInset", root.transform, rightInset,
-                    new Vector3(0.04f, 0.02f, 2.68f), Color.Lerp(palette.Sky, edge, 0.42f)).transform.rotation = rotation;
-
-                float width = segment % 3 == 0 ? 0.11f : 0.055f;
-                PrimitiveFactory.Cube("LaneSeam", root.transform, center + Vector3.up * 0.33f,
-                    new Vector3(width, 0.018f, 0.92f), Color.Lerp(lane, edge, 0.42f)).transform.rotation = rotation;
+                GameObject crust = PrimitiveFactory.Cube("AlienGroundCrust", root.transform,
+                    center + rotation * Vector3.right * Range(random, -2.2f, 2.2f) + Vector3.up * 0.25f,
+                    new Vector3(Range(random, 1.1f, 3.8f), 0.08f, Range(random, 0.30f, 0.72f)), soilLight);
+                crust.transform.rotation = rotation * Quaternion.Euler(0f, Range(random, -28f, 28f), Range(random, -10f, 10f));
 
                 if (segment % 2 == 0)
                 {
                     float side = segment % 4 == 0 ? -1f : 1f;
-                    Vector3 fracture = center + rotation * Vector3.right * (side * (1.1f + (segment % 3) * 0.48f)) + Vector3.up * 0.34f;
-                    GameObject seam = PrimitiveFactory.Cube("SurfaceFracture", root.transform, fracture,
-                        new Vector3(0.035f, 0.022f, 1.25f), Color.Lerp(lane, GameTheme.Void, 0.62f));
-                    seam.transform.rotation = rotation * Quaternion.Euler(0f, 0f, side * (18f + segment * 1.5f));
+                    Vector3 split = center + rotation * Vector3.right * (side * Range(random, 0.8f, 2.6f)) + Vector3.up * 0.31f;
+                    GameObject crack = PrimitiveFactory.Cube("AlienGroundCrack", root.transform, split,
+                        new Vector3(0.035f, 0.024f, Range(random, 0.52f, 1.40f)), fracture);
+                    crack.transform.rotation = rotation * Quaternion.Euler(0f, 0f, side * Range(random, 18f, 42f));
                 }
 
-                if (segment % 3 == 0)
-                {
-                    Vector3 stripe = center + rotation * Vector3.forward * 0.72f + Vector3.up * 0.065f;
-                    PrimitiveFactory.Cube("SurfaceStripe", root.transform, stripe,
-                        new Vector3(8.14f, 0.022f, 0.035f), routeBreak).transform.rotation = rotation;
-                }
+                Vector3 moundPosition = center + rotation * Vector3.right * Range(random, -2.6f, 2.6f) + Vector3.up * 0.30f;
+                GameObject mound = PrimitiveFactory.Cube("AlienGroundMound", root.transform, moundPosition,
+                    new Vector3(Range(random, 0.28f, 0.72f), Range(random, 0.08f, 0.24f), Range(random, 0.34f, 0.82f)),
+                    segment % 3 == 0 ? palette.Detail : soilLight);
+                mound.transform.rotation = rotation * Quaternion.Euler(0f, Range(random, -45f, 45f), Range(random, -18f, 18f));
+            }
+        }
+
+        private void BuildGroundBed(LevelDefinition level, BiomePalette palette)
+        {
+            // A continuous, low profile bed keeps the route from reading as a
+            // stack of floating plates while the smaller patches still provide
+            // authored breakup and movement landmarks above it.
+            Color bedColor = Color.Lerp(palette.Ground, palette.Sky, 0.12f);
+            GameObject bed = PrimitiveFactory.Sphere("AlienGroundBed", root.transform,
+                new Vector3(LaneRoute.CenterX(level.Route, 10f), -0.66f, 10f),
+                new Vector3(15.5f, 0.42f, 34f), bedColor);
+            bed.transform.rotation = Quaternion.Euler(0f, LaneRoute.HeadingDegrees(level.Route, 10f) * 0.18f, 0f);
+
+            Color edgeColor = Color.Lerp(palette.Terrain, palette.Ground, 0.34f);
+            for (int index = 0; index < 8; index++)
+            {
+                float z = -3.0f + index * 3.85f;
+                float side = index % 2 == 0 ? -1f : 1f;
+                float x = LaneRoute.CenterX(level.Route, z) + side * (4.8f + (index % 3) * 0.42f);
+                GameObject edge = PrimitiveFactory.Cube("GroundEdgeShard_" + index.ToString("00"), root.transform,
+                    new Vector3(x, -0.02f, z), new Vector3(0.46f + (index % 2) * 0.24f, 0.18f, 0.82f), edgeColor);
+                edge.transform.rotation = Quaternion.Euler(0f, LaneRoute.HeadingDegrees(level.Route, z) + side * (22f + index * 3f), side * 12f);
             }
         }
 
@@ -172,23 +228,25 @@ namespace EscapeFromNodnarb
             GameObject centerline = new GameObject("RouteCenterline_" + level.Index.ToString("00"));
             centerline.transform.SetParent(root.transform, false);
             Color cueColor = Color.Lerp(palette.Detail, GameTheme.SignalBright, 0.42f);
+            System.Random random = new System.Random(level.Seed ^ 0x50415448);
             for (int segment = 0; segment < 12; segment++)
             {
                 float z = -3.25f + segment * 2.45f;
                 float centerX = LaneRoute.CenterX(level.Route, z);
                 Quaternion rotation = Quaternion.Euler(0f, LaneRoute.HeadingDegrees(level.Route, z), 0f);
-                Vector3 center = new Vector3(centerX, 0.075f, z);
-                GameObject dash = PrimitiveFactory.Cube("RouteCue", centerline.transform, center,
-                    new Vector3(0.075f, 0.024f, 0.68f), cueColor);
-                dash.transform.rotation = rotation;
+                float side = segment % 2 == 0 ? -1f : 1f;
+                Vector3 position = new Vector3(centerX + side * Range(random, 0.36f, 0.86f), 0.075f, z);
+                GameObject marker = PrimitiveFactory.Sphere("OrganicPathMarker", centerline.transform, position,
+                    new Vector3(Range(random, 0.11f, 0.20f), Range(random, 0.05f, 0.10f), Range(random, 0.16f, 0.30f)), cueColor);
+                marker.transform.rotation = rotation * Quaternion.Euler(0f, Range(random, -25f, 25f), 0f);
 
                 if (segment % 2 == 0)
                 {
-                    float turn = Mathf.Clamp(LaneRoute.HeadingDegrees(level.Route, z) * 1.8f, -32f, 32f);
-                    GameObject arrow = PrimitiveFactory.Cube("TurnCue", centerline.transform,
-                        center + rotation * Vector3.forward * 0.40f + rotation * Vector3.right * 0.13f,
-                        new Vector3(0.075f, 0.026f, 0.30f), GameTheme.SignalBright);
-                    arrow.transform.rotation = rotation * Quaternion.Euler(0f, turn + 28f, 0f);
+                    float branchSide = side * -1f;
+                    Vector3 forkPosition = new Vector3(centerX + branchSide * Range(random, 0.88f, 1.55f), 0.10f, z + 0.42f);
+                    GameObject fork = PrimitiveFactory.Cube("OrganicPathFork", centerline.transform, forkPosition,
+                        new Vector3(0.10f, 0.045f, 0.34f), GameTheme.SignalBright);
+                    fork.transform.rotation = rotation * Quaternion.Euler(0f, branchSide * Range(random, 22f, 44f), 0f);
                 }
             }
         }
@@ -206,17 +264,19 @@ namespace EscapeFromNodnarb
                     float height = Range(random, 1.55f, 3.65f);
                     float x = LaneRoute.CenterX(level.Route, z) + side * Range(random, 5.55f, 6.35f);
                     float width = Range(random, 0.95f, 1.75f);
-                    GameObject cliff = PrimitiveFactory.Cube("CanyonWall", root.transform,
+                    GameObject cliff = PrimitiveFactory.Sphere("CanyonWall", root.transform,
                         new Vector3(x, height * 0.48f - 0.1f, z + Range(random, -0.35f, 0.35f)),
-                        new Vector3(width, height, Range(random, 2.2f, 3.6f)),
+                        new Vector3(width * 1.22f, height * 0.88f, Range(random, 2.45f, 3.85f)),
                         segment % 3 == 0 ? shadow : palette.Terrain);
                     Quaternion rotation = Quaternion.Euler(Range(random, -5f, 5f), Range(random, -18f, 18f), side * Range(random, 4f, 13f));
                     cliff.transform.rotation = rotation;
+                    AddFacet(cliff.transform, new Vector3(-side * 0.28f, 0.22f, -0.36f),
+                        new Vector3(width * 0.46f, height * 0.18f, 0.12f), palette.Detail, 0.18f, side * 18f, side * 6f);
                     if (segment % 2 == 0)
                     {
-                        GameObject facet = PrimitiveFactory.Cube("CanyonFacet", root.transform,
+                        GameObject facet = PrimitiveFactory.Sphere("CanyonFacet", root.transform,
                             new Vector3(x - side * width * 0.22f, height * 0.56f, z - 0.84f),
-                            new Vector3(width * 0.42f, height * 0.20f, 0.16f), palette.Detail);
+                            new Vector3(width * 0.48f, height * 0.22f, 0.20f), palette.Detail);
                         facet.transform.rotation = rotation;
                     }
                 }
@@ -319,10 +379,12 @@ namespace EscapeFromNodnarb
                 float centerX = LaneRoute.CenterX(level.Route, z);
                 float x = centerX + (index - 3) * 3.15f + Range(random, -0.42f, 0.42f);
                 float height = Range(random, 1.45f, 3.15f);
-                GameObject ridge = PrimitiveFactory.Cube("DistantRidge", root.transform,
+                GameObject ridge = PrimitiveFactory.Sphere("DistantRidge", root.transform,
                     new Vector3(x, height * 0.48f - 0.1f, z),
-                    new Vector3(Range(random, 0.82f, 1.55f), height, 0.56f), farColor);
+                    new Vector3(Range(random, 1.05f, 1.85f), height * 0.92f, 0.82f), farColor);
                 ridge.transform.rotation = Quaternion.Euler(Range(random, -8f, 8f), Range(random, -16f, 16f), Range(random, -10f, 10f));
+                AddFacet(ridge.transform, new Vector3(0f, 0.22f, -0.34f), new Vector3(0.42f, height * 0.20f, 0.08f),
+                    Color.Lerp(farColor, palette.Detail, 0.22f), 0.10f, 0f, 0f);
             }
 
             Color moonColor = Color.Lerp(palette.Detail, palette.Sky, 0.42f);
@@ -415,10 +477,13 @@ namespace EscapeFromNodnarb
 
         private void BuildBiomeFraming(LevelDefinition level, BiomePalette palette)
         {
+            // Wilderness framing uses natural shelves, growth, and crystals. The
+            // legacy object names remain stable for runtime tests and tooling.
             GameObject frame = new GameObject("BiomeFrame_" + level.Index.ToString("00"));
             frame.transform.SetParent(root.transform, false);
             Color accent = RouteAccent(level.Route, palette);
             Color frameColor = Color.Lerp(palette.Terrain, palette.Detail, 0.26f);
+            System.Random random = new System.Random(level.Seed ^ 0x4652414D);
 
             for (int index = 0; index < 5; index++)
             {
@@ -426,31 +491,39 @@ namespace EscapeFromNodnarb
                 float side = index % 2 == 0 ? -1f : 1f;
                 float centerX = LaneRoute.CenterX(level.Route, z);
                 Quaternion rotation = Quaternion.Euler(0f, LaneRoute.HeadingDegrees(level.Route, z), 0f);
-                Vector3 lampPosition = new Vector3(centerX + side * 4.58f, 0.52f, z);
-                GameObject lamp = PrimitiveFactory.Cube("RouteLamp_" + index.ToString("00"), frame.transform,
-                    lampPosition, new Vector3(0.12f, 1.04f, 0.12f), accent);
-                lamp.transform.rotation = rotation;
+                Vector3 rockPosition = new Vector3(centerX + side * Range(random, 4.25f, 4.85f), Range(random, 1.18f, 1.45f), z);
+                GameObject rock = PrimitiveFactory.Sphere("RouteLamp_" + index.ToString("00"), frame.transform,
+                    rockPosition, new Vector3(Range(random, 0.72f, 1.30f), Range(random, 1.10f, 1.85f), Range(random, 0.78f, 1.32f)), frameColor);
+                rock.transform.rotation = rotation * Quaternion.Euler(0f, Range(random, -28f, 28f), side * Range(random, 5f, 16f));
                 PrimitiveFactory.Sphere("RouteLampCore_" + index.ToString("00"), frame.transform,
-                    lampPosition + Vector3.up * 0.62f, new Vector3(0.30f, 0.16f, 0.30f), accent);
-
-                Vector3 bracePosition = new Vector3(centerX + side * 5.52f, 0.98f, z + 0.55f);
-                GameObject brace = PrimitiveFactory.Cube("BiomeBrace_" + index.ToString("00"), frame.transform,
-                    bracePosition, new Vector3(0.62f, 1.72f, 0.24f), frameColor);
-                brace.transform.rotation = rotation * Quaternion.Euler(0f, 0f, side * (8f + index * 2f));
+                    rockPosition + new Vector3(-side * 0.20f, 0.55f, -0.28f), new Vector3(0.22f, 0.16f, 0.18f), accent);
+                GameObject growth = PrimitiveFactory.Cube("BiomeBrace_" + index.ToString("00"), frame.transform,
+                    rockPosition + new Vector3(side * 0.25f, -0.08f, 0.32f), new Vector3(0.36f, 0.22f, 0.30f), palette.Terrain);
+                growth.transform.rotation = rotation * Quaternion.Euler(0f, side * 22f, side * 12f);
+                PrimitiveFactory.Cube("RouteLampFacet_" + index.ToString("00"), frame.transform,
+                    rockPosition + new Vector3(-side * 0.18f, 0.30f, -0.26f),
+                    new Vector3(0.34f, 0.10f, 0.18f), Color.Lerp(frameColor, palette.Detail, 0.28f)).transform.rotation = rotation;
             }
 
             float gateZ = 20.5f;
             float gateCenter = LaneRoute.CenterX(level.Route, gateZ);
-            GameObject gateLeft = PrimitiveFactory.Cube("BiomeGateLeft", frame.transform,
-                new Vector3(gateCenter - 4.75f, 1.32f, gateZ), new Vector3(0.28f, 2.64f, 0.32f), frameColor);
-            GameObject gateRight = PrimitiveFactory.Cube("BiomeGateRight", frame.transform,
-                new Vector3(gateCenter + 4.75f, 1.32f, gateZ), new Vector3(0.28f, 2.64f, 0.32f), frameColor);
+            // Capsule meshes are two world units tall before scaling, so keep
+            // their base above the continuous ground bed even when the organic
+            // lean below applies a small roll.
+            const float gatePostY = 1.50f;
+            GameObject gateLeft = PrimitiveFactory.Capsule("BiomeGateLeft", frame.transform,
+                new Vector3(gateCenter - 4.75f, gatePostY, gateZ), new Vector3(1.05f, 1.30f, 0.88f), frameColor);
+            GameObject gateRight = PrimitiveFactory.Capsule("BiomeGateRight", frame.transform,
+                new Vector3(gateCenter + 4.75f, gatePostY, gateZ), new Vector3(1.05f, 1.30f, 0.88f), frameColor);
             Quaternion gateRotation = Quaternion.Euler(0f, LaneRoute.HeadingDegrees(level.Route, gateZ), 0f);
-            gateLeft.transform.rotation = gateRotation;
-            gateRight.transform.rotation = gateRotation;
-            GameObject gateTop = PrimitiveFactory.Cube("BiomeGateTop", frame.transform,
-                new Vector3(gateCenter, 2.58f, gateZ), new Vector3(9.5f, 0.24f, 0.34f), accent);
-            gateTop.transform.rotation = gateRotation;
+            gateLeft.transform.rotation = gateRotation * Quaternion.Euler(0f, -18f, -10f);
+            gateRight.transform.rotation = gateRotation * Quaternion.Euler(0f, 18f, 10f);
+            float gateTopZ = level.Biome == BiomeId.NightShelf ? gateZ + 8.0f : gateZ + 4.50f;
+            float gateTopHeight = level.Biome == BiomeId.NightShelf ? 3.80f : 2.58f;
+            GameObject gateTop = PrimitiveFactory.Sphere("BiomeGateTop", frame.transform,
+                new Vector3(gateCenter, gateTopHeight, gateTopZ), new Vector3(5.8f, 0.72f, 1.06f),
+                Color.Lerp(frameColor, accent, 0.34f));
+            gateTop.transform.rotation = gateRotation * Quaternion.Euler(0f, 0f, 4f);
         }
 
         private void BuildNearFieldIdentity(LevelDefinition level, BiomePalette palette)
@@ -562,10 +635,12 @@ namespace EscapeFromNodnarb
         private void BuildSpore(Vector3 position, float scale, BiomePalette palette)
         {
             PrimitiveFactory.Cylinder("SporeStem", root.transform, position + Vector3.up * scale * 0.65f,
-                new Vector3(scale * 0.17f, scale * 0.65f, scale * 0.17f), palette.Terrain);
+                new Vector3(scale * 0.15f, scale * 0.65f, scale * 0.15f), Color.Lerp(palette.Terrain, GameTheme.AlienViolet, 0.22f));
             GameObject cap = PrimitiveFactory.Sphere("SporeCap", root.transform, position + Vector3.up * scale * 1.3f,
                 new Vector3(scale, scale * 0.28f, scale), palette.Detail);
             cap.transform.rotation = Quaternion.Euler(0f, position.z * 13f, 0f);
+            AddFacet(cap.transform, new Vector3(0f, 0.06f, 0.12f), new Vector3(scale * 0.52f, scale * 0.05f, scale * 0.18f),
+                GameTheme.AlienGlow, 0.06f, position.z * 9f, 0f);
         }
 
         private void BuildSnow(Vector3 position, float scale, BiomePalette palette)
@@ -647,6 +722,12 @@ namespace EscapeFromNodnarb
             {
                 TryBuildImportedLandmark("HiveGrowth", new Vector3(
                     LaneRoute.CenterX(level.Route, 15.4f) - 4.55f, 0f, 15.4f), 0.82f, palette);
+            }
+
+            if (level.Index == 3)
+            {
+                TryBuildImportedLandmark("SporeArch", new Vector3(
+                    LaneRoute.CenterX(level.Route, 9.8f) + 4.72f, 0f, 9.8f), 0.68f, palette);
             }
 
             if (level.Biome == BiomeId.CrystalFault || level.Biome == BiomeId.BeaconPlain)
@@ -771,11 +852,36 @@ namespace EscapeFromNodnarb
                 Material[] runtimeMaterials = new Material[sourceMaterials.Length];
                 for (int materialIndex = 0; materialIndex < sourceMaterials.Length; materialIndex++)
                 {
-                    string materialName = sourceMaterials[materialIndex] == null ? string.Empty : sourceMaterials[materialIndex].name;
-                    runtimeMaterials[materialIndex] = PrimitiveFactory.Material(LandmarkColor(resourceName, materialName, palette));
+                    Material sourceMaterial = sourceMaterials[materialIndex];
+                    if (sourceMaterial != null)
+                    {
+                        // Preserve authored FBX materials. Replacing them with a flat
+                        // runtime color discards texture, emission, and surface response.
+                        runtimeMaterials[materialIndex] = sourceMaterial;
+                        continue;
+                    }
+
+                    runtimeMaterials[materialIndex] = PrimitiveFactory.Material(
+                        LandmarkColor(resourceName, string.Empty, palette));
                 }
 
                 renderer.sharedMaterials = runtimeMaterials;
+            }
+
+            if (renderers.Length > 0)
+            {
+                LODGroup lodGroup = landmark.GetComponent<LODGroup>();
+                if (lodGroup == null)
+                {
+                    lodGroup = landmark.AddComponent<LODGroup>();
+                }
+
+                lodGroup.SetLODs(new[]
+                {
+                    new LOD(0.18f, renderers),
+                    new LOD(0.025f, new Renderer[0])
+                });
+                lodGroup.RecalculateBounds();
             }
 
             if (renderers.Length > 0 && bounds.min.y < 0.02f)
@@ -784,6 +890,16 @@ namespace EscapeFromNodnarb
             }
 
             return renderers.Length > 0;
+        }
+
+        private static void AddFacet(Transform parent, Vector3 localPosition, Vector3 scale, Color color,
+            float verticalOffset, float yaw, float roll)
+        {
+            GameObject facet = PrimitiveFactory.Cube("AuthoredFacet", parent, parent.position + localPosition,
+                scale, color);
+            facet.transform.SetParent(parent, true);
+            facet.transform.localPosition = localPosition + Vector3.up * verticalOffset;
+            facet.transform.localRotation = Quaternion.Euler(0f, yaw, roll);
         }
 
         private static Color LandmarkColor(string resourceName, string materialName, BiomePalette palette)
@@ -847,6 +963,11 @@ namespace EscapeFromNodnarb
     {
         private static readonly Dictionary<int, Material> Materials = new Dictionary<int, Material>();
 
+        public static int MaterialCacheCount
+        {
+            get { return Materials.Count; }
+        }
+
         public static GameObject Cube(string name, Transform parent, Vector3 position, Vector3 scale, Color color)
         {
             return Primitive(PrimitiveType.Cube, name, parent, position, scale, color);
@@ -889,6 +1010,17 @@ namespace EscapeFromNodnarb
             }
 
             material = new Material(shader) { color = color, name = "Procedural_" + key.ToString("X8") };
+            material.enableInstancing = true;
+            material.SetColor("_RimColor", Color.Lerp(color, GameTheme.Signal, 0.22f));
+            material.SetFloat("_RimPower", 2.4f);
+            material.SetFloat("_RimStrength", 0.18f);
+            material.SetColor("_SpecularColor", Color.Lerp(Color.white, color, 0.34f));
+            material.SetFloat("_SpecularStrength", 0.09f);
+
+            bool signalLike = color.g > color.r * 1.12f && color.g > color.b * 1.05f;
+            bool hostileLike = color.r > color.g * 1.45f && color.r > color.b * 1.20f;
+            material.SetColor("_EmissionColor", signalLike || hostileLike ? color : Color.black);
+            material.SetFloat("_EmissionStrength", signalLike || hostileLike ? 0.22f : 0f);
             Materials[key] = material;
             return material;
         }

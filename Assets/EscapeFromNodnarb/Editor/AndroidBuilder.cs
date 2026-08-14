@@ -10,6 +10,8 @@ namespace EscapeFromNodnarb.Editor
     public static class AndroidBuilder
     {
         public const string OutputPath = "Builds/Android/EscapeFromNodnarb-debug.apk";
+        public const string ReleaseApkOutputPath = "Builds/Android/EscapeFromNodnarb-release-local.apk";
+        public const string ReleaseBundleOutputPath = "Builds/Android/EscapeFromNodnarb-release-local.aab";
 
         [MenuItem("Escape from Nodnarb/Build Android Debug APK")]
         public static void BuildDebug()
@@ -42,6 +44,67 @@ namespace EscapeFromNodnarb.Editor
                 + " warnings=" + summary.totalWarnings
                 + " apkBytes=" + outputBytes
                 + " output=" + outputPath;
+            Debug.Log(evidence);
+            if (summary.result != BuildResult.Succeeded)
+            {
+                throw new InvalidOperationException(evidence);
+            }
+        }
+
+        [MenuItem("Escape from Nodnarb/Build Android Local Release Artifacts")]
+        public static void BuildReleaseArtifacts()
+        {
+            bool previousDevelopment = EditorUserBuildSettings.development;
+            bool previousAllowDebugging = EditorUserBuildSettings.allowDebugging;
+            bool previousBuildAppBundle = EditorUserBuildSettings.buildAppBundle;
+            try
+            {
+                ConfigureExternalTools();
+                ProjectBootstrapper.Configure();
+                Directory.CreateDirectory(Path.GetDirectoryName(ReleaseApkOutputPath) ?? "Builds/Android");
+                if (!EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Android, BuildTarget.Android))
+                {
+                    throw new InvalidOperationException("Could not switch the active build target to Android.");
+                }
+
+                EditorUserBuildSettings.development = false;
+                EditorUserBuildSettings.allowDebugging = false;
+                BuildReleaseArtifact(ReleaseApkOutputPath, false);
+                BuildReleaseArtifact(ReleaseBundleOutputPath, true);
+            }
+            finally
+            {
+                EditorUserBuildSettings.development = previousDevelopment;
+                EditorUserBuildSettings.allowDebugging = previousAllowDebugging;
+                EditorUserBuildSettings.buildAppBundle = previousBuildAppBundle;
+            }
+        }
+
+        private static void BuildReleaseArtifact(string outputPath, bool appBundle)
+        {
+            EditorUserBuildSettings.buildAppBundle = appBundle;
+            BuildPlayerOptions options = new BuildPlayerOptions
+            {
+                scenes = new[] { ProjectBootstrapper.MainScenePath },
+                locationPathName = outputPath,
+                target = BuildTarget.Android,
+                targetGroup = BuildTargetGroup.Android,
+                options = BuildOptions.CompressWithLz4HC
+            };
+
+            BuildReport report = BuildPipeline.BuildPlayer(options);
+            BuildSummary summary = report.summary;
+            string builtPath = Path.GetFullPath(summary.outputPath);
+            long outputBytes = File.Exists(builtPath) ? new FileInfo(builtPath).Length : 0L;
+            string artifact = appBundle ? "aab" : "apk";
+            string evidence = "NODNARB_ANDROID_RELEASE_BUILD artifact=" + artifact
+                + " result=" + summary.result
+                + " errors=" + summary.totalErrors
+                + " warnings=" + summary.totalWarnings
+                + " bytes=" + outputBytes
+                + " output=" + builtPath
+                + " development=" + EditorUserBuildSettings.development
+                + " allowDebugging=" + EditorUserBuildSettings.allowDebugging;
             Debug.Log(evidence);
             if (summary.result != BuildResult.Succeeded)
             {

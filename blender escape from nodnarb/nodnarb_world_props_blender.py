@@ -3,6 +3,7 @@
 
 import bpy
 import math
+import sys
 from pathlib import Path
 
 
@@ -204,6 +205,63 @@ def build_hive_growth(root, mats):
     parent_to_root(root)
 
 
+def build_spore_arch(root, mats):
+    organic, flesh, core, dark = mats
+    cube("SporeBed", (0.0, 0.12, 0.0), (4.8, 0.24, 1.35), dark,
+         rotation=(0.0, -0.08, 0.0), edge=0.04)
+
+    for side in (-1.0, 1.0):
+        base_x = side * 2.05
+        cone("SporePillar", (base_x, 1.22, 0.0), 0.72, 2.55, organic,
+             rotation=(0.0, side * 0.16, side * 0.10), vertices=7)
+        cone("SporeFleshRidge", (side * 1.58, 1.14, -0.06), 0.34, 2.12, flesh,
+             rotation=(0.0, side * 0.22, side * 0.14), vertices=6)
+        cylinder("SporeRoot", (side * 1.72, 0.30, 0.18), 0.18, 1.35, flesh,
+                 rotation=(0.0, side * 0.24, 0.0), vertices=7)
+
+    canopy_lobes = [
+        (-1.72, 2.36, 0.02, 0.64, 0.42, 0.60, -0.18),
+        (-1.05, 2.56, 0.04, 0.67, 0.46, 0.68, -0.10),
+        (-0.35, 2.70, 0.06, 0.66, 0.50, 0.74, -0.04),
+        (0.35, 2.70, 0.06, 0.66, 0.50, 0.74, 0.04),
+        (1.05, 2.56, 0.04, 0.67, 0.46, 0.68, 0.10),
+        (1.72, 2.36, 0.02, 0.64, 0.42, 0.60, 0.18),
+    ]
+    for index, (x, y, z, sx, sy, sz, tilt) in enumerate(canopy_lobes):
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=1.0, location=(x, y, z))
+        canopy = bpy.context.object
+        canopy.name = "SporeCanopyLobe"
+        canopy.scale = (sx, sy, sz)
+        canopy.rotation_euler[2] = tilt
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        assign(canopy, organic if index % 2 == 0 else flesh)
+
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.34, location=(0.0, 2.38, -0.78))
+    signal = bpy.context.object
+    signal.name = "SporeCore"
+    signal.scale = (1.0, 0.62, 0.46)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    assign(signal, core)
+
+    for index, (x, y, z, size) in enumerate([
+        (-1.10, 0.82, -0.22, 0.42),
+        (-0.42, 1.05, 0.18, 0.54),
+        (0.46, 0.96, 0.10, 0.48),
+        (1.18, 0.76, -0.18, 0.36),
+    ]):
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=size, location=(x, y, z))
+        pod = bpy.context.object
+        pod.name = "SporePod"
+        pod.scale = (1.0, 0.72, 0.86)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        assign(pod, flesh if index % 2 == 0 else organic)
+
+    for side in (-1.0, 1.0):
+        cube("SporeRootPlate", (side * 1.20, 0.28, 0.34), (1.20, 0.12, 0.16), flesh,
+             rotation=(0.0, side * 0.26, side * 0.18), edge=0.02)
+    parent_to_root(root)
+
+
 def build_ruin_gate(root, mats):
     metal, dark, signal, trim = mats
     cube("GateBase", (0.0, 0.12, 0.0), (5.4, 0.24, 1.35), dark, edge=0.04)
@@ -283,6 +341,19 @@ def main():
     set_units.system = "METRIC"
     set_units.scale_length = 1.0
 
+    if "--only-spore-arch" in sys.argv:
+        build_asset(
+            "SporeArch",
+            build_spore_arch,
+            [
+                ("WorldOrganic", (0.22, 0.10, 0.25), 0.05),
+                ("WorldFlesh", (0.54, 0.16, 0.36), 0.05),
+                ("WorldCore", (0.82, 0.90, 0.28), 0.05),
+                ("WorldDark", (0.06, 0.05, 0.09), 0.20),
+            ],
+        )
+        return
+
     build_asset(
         "CrashedEngine",
         build_crashed_engine,
@@ -341,6 +412,16 @@ def main():
             ("WorldFlesh", (0.58, 0.12, 0.32), 0.05),
             ("WorldCore", (0.95, 0.18, 0.42), 0.05),
             ("WorldDark", (0.07, 0.05, 0.08), 0.20),
+        ],
+    )
+    build_asset(
+        "SporeArch",
+        build_spore_arch,
+        [
+            ("WorldOrganic", (0.22, 0.10, 0.25), 0.05),
+            ("WorldFlesh", (0.54, 0.16, 0.36), 0.05),
+            ("WorldCore", (0.82, 0.90, 0.28), 0.05),
+            ("WorldDark", (0.06, 0.05, 0.09), 0.20),
         ],
     )
     build_asset(
