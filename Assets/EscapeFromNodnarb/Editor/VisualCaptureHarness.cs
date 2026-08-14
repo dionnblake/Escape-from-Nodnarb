@@ -97,6 +97,15 @@ namespace EscapeFromNodnarb.Editor
             fill.intensity = 0.22f;
             fill.shadows = LightShadows.None;
             fill.transform.rotation = Quaternion.Euler(26f, 148f, 0f);
+
+            GameObject rimObject = new GameObject("VisualCaptureRim");
+            rimObject.transform.SetParent(parent, false);
+            rimObject.transform.rotation = Quaternion.Euler(32f, 152f, 0f);
+            Light rim = rimObject.AddComponent<Light>();
+            rim.type = LightType.Directional;
+            rim.color = Color.Lerp(GameTheme.CanyonHighlight, GameTheme.Text, 0.24f);
+            rim.intensity = 0.78f;
+            rim.shadows = LightShadows.None;
         }
 
         private static void BuildSubjects(Transform parent, SubjectMode mode)
@@ -184,7 +193,7 @@ namespace EscapeFromNodnarb.Editor
 
         private static Material SubjectMaterial(string name, Color baseColor, Color emission)
         {
-            Shader shader = Shader.Find("EscapeFromNodnarb/NodnarbProceduralLit");
+            Shader shader = Shader.Find("EscapeFromNodnarb/ProceduralLit");
             Material material = new Material(shader == null ? Shader.Find("Standard") : shader);
             material.name = "CaptureMaterial_" + name;
             if (material.HasProperty("_Color")) material.SetColor("_Color", baseColor);

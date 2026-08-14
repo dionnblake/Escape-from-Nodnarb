@@ -31,13 +31,13 @@ namespace EscapeFromNodnarb
             camera.clearFlags = CameraClearFlags.SolidColor;
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
             RenderSettings.ambientLight = level.Index == 2
-                ? Color.Lerp(palette.Terrain, GameTheme.CanyonHighlight, 0.18f)
+                ? Color.Lerp(palette.Terrain, GameTheme.CanyonHighlight, 0.32f)
                 : Color.Lerp(palette.Terrain, GameTheme.Text, 0.22f);
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogColor = level.Index == 2 ? Color.Lerp(palette.Sky, GameTheme.Void, 0.12f) : palette.Sky;
-            RenderSettings.fogStartDistance = level.Index == 2 ? 14f : 18f;
-            RenderSettings.fogEndDistance = level.Index == 2 ? 34f : 38f;
+            RenderSettings.fogColor = level.Index == 2 ? Color.Lerp(palette.Sky, palette.Ground, 0.16f) : palette.Sky;
+            RenderSettings.fogStartDistance = level.Index == 2 ? 11f : 18f;
+            RenderSettings.fogEndDistance = level.Index == 2 ? 32f : 38f;
 
             bool crashBasin = level.Index == 2;
             if (crashBasin)
@@ -88,7 +88,32 @@ namespace EscapeFromNodnarb
                 BuildDistantBeacon(palette);
             }
 
+            if (crashBasin)
+            {
+                BuildCrashBasinSignalBeacon(level, palette);
+                ApplyCrashBasinLighting(palette);
+            }
             RefreshVisualBudget();
+        }
+
+        private void BuildCrashBasinSignalBeacon(LevelDefinition level, BiomePalette palette)
+        {
+            float z = 22.2f;
+            float centerX = LaneRoute.CenterX(level.Route, z);
+            PlaceCrashBasinAsset("CrashBasinSpireA", root.transform,
+                new Vector3(centerX - 1.55f, -0.02f, z + 0.35f), 0.82f,
+                new Vector3(1.0f, 1.28f, 1.0f), -12f, palette, "CrashBasinBeaconSpireL");
+            PlaceCrashBasinAsset("CrashBasinSpireB", root.transform,
+                new Vector3(centerX + 1.45f, -0.02f, z + 0.55f), 0.70f,
+                new Vector3(1.0f, 1.16f, 1.0f), 14f, palette, "CrashBasinBeaconSpireR");
+            PrimitiveFactory.Cylinder("CrashBasinBeaconMast", root.transform,
+                new Vector3(centerX, 3.05f, z), new Vector3(0.14f, 2.6f, 0.14f), GameTheme.SignalCyan);
+            PrimitiveFactory.Cube("CrashBasinBeaconArmL", root.transform,
+                new Vector3(centerX - 0.34f, 4.02f, z), new Vector3(0.62f, 0.07f, 0.07f), GameTheme.Signal);
+            PrimitiveFactory.Cube("CrashBasinBeaconArmR", root.transform,
+                new Vector3(centerX + 0.34f, 4.02f, z), new Vector3(0.62f, 0.07f, 0.07f), GameTheme.Signal);
+            PrimitiveFactory.Sphere("CrashBasinBeaconPulse", root.transform,
+                new Vector3(centerX, 4.68f, z), new Vector3(0.42f, 0.42f, 0.42f), GameTheme.SignalBright);
         }
 
         public void Clear()
@@ -102,6 +127,46 @@ namespace EscapeFromNodnarb
             RuntimeRendererCount = 0;
             RuntimeMaterialCount = 0;
             LastVisualBudgetReport = string.Empty;
+        }
+
+        private void ApplyCrashBasinLighting(BiomePalette palette)
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+            int ambientId = Shader.PropertyToID("_AmbientStrength");
+            int directionalId = Shader.PropertyToID("_DirectionalStrength");
+            int shadowId = Shader.PropertyToID("_ShadowColor");
+            int rimColorId = Shader.PropertyToID("_RimColor");
+            int rimStrengthId = Shader.PropertyToID("_RimStrength");
+            Color shadowColor = Color.Lerp(palette.Sky, palette.Ground, 0.58f);
+            Color rimColor = Color.Lerp(palette.Detail, GameTheme.SignalCyan, 0.34f);
+            MaterialPropertyBlock block = new MaterialPropertyBlock();
+            Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+            for (int index = 0; index < renderers.Length; index++)
+            {
+                Renderer renderer = renderers[index];
+                if (renderer == null || renderer.sharedMaterial == null)
+                {
+                    continue;
+                }
+
+                Material material = renderer.sharedMaterial;
+                if (!material.HasProperty(ambientId))
+                {
+                    continue;
+                }
+
+                renderer.GetPropertyBlock(block);
+                block.SetFloat(ambientId, 0.46f);
+                block.SetFloat(directionalId, 0.84f);
+                block.SetColor(shadowId, shadowColor);
+                block.SetColor(rimColorId, rimColor);
+                block.SetFloat(rimStrengthId, 0.22f);
+                renderer.SetPropertyBlock(block);
+            }
         }
 
         private void RefreshVisualBudget()
@@ -144,6 +209,24 @@ namespace EscapeFromNodnarb
         private void BuildCrashBasinGround(LevelDefinition level, BiomePalette palette)
         {
             System.Random random = new System.Random(level.Seed ^ 0x43524153);
+            float floorZ = 8.0f;
+            float floorCenterX = LaneRoute.CenterX(level.Route, floorZ);
+            Color floorColor = Color.Lerp(palette.Ground, palette.Terrain, 0.22f);
+            GameObject floorBed = PrimitiveFactory.Sphere("CrashBasinFloorBed", root.transform,
+                new Vector3(floorCenterX, -0.52f, floorZ), new Vector3(10.6f, 0.58f, 31.5f), floorColor);
+            floorBed.transform.rotation = Quaternion.Euler(0f, LaneRoute.HeadingDegrees(level.Route, floorZ), 0f);
+            for (int fracture = 0; fracture < 10; fracture++)
+            {
+                float fractureZ = -3.2f + fracture * 2.35f + Range(random, -0.32f, 0.32f);
+                float fractureSide = fracture % 2 == 0 ? -1f : 1f;
+                float fractureX = LaneRoute.CenterX(level.Route, fractureZ) + fractureSide * Range(random, 0.65f, 2.75f);
+                GameObject line = PrimitiveFactory.Cube("CrashBasinFracture", root.transform,
+                    new Vector3(fractureX, -0.20f, fractureZ),
+                    new Vector3(Range(random, 0.025f, 0.055f), 0.025f, Range(random, 0.38f, 0.95f)),
+                    Color.Lerp(palette.Sky, palette.Ground, 0.42f));
+                line.transform.rotation = Quaternion.Euler(0f, LaneRoute.HeadingDegrees(level.Route, fractureZ) + Range(random, -34f, 34f), fractureSide * Range(random, 8f, 24f));
+            }
+
             for (int segment = 0; segment < 10; segment++)
             {
                 float z = -4.5f + segment * 2.45f + Range(random, -0.24f, 0.24f);
@@ -151,7 +234,7 @@ namespace EscapeFromNodnarb
                 string asset = segment % 2 == 0 ? "CrashBasinGroundA" : "CrashBasinGroundB";
                 string name = segment == 0 ? "AlienGroundPatch" : segment == 1 ? "AlienGroundCrust" : "CrashBasinGround_" + segment.ToString("00");
                 PlaceCrashBasinAsset(asset, root.transform, new Vector3(centerX, -0.02f, z),
-                    Range(random, 0.94f, 1.12f), new Vector3(Range(random, 1.10f, 1.38f), 1f, Range(random, 0.88f, 1.16f)),
+                    Range(random, 0.78f, 0.96f), new Vector3(Range(random, 1.00f, 1.24f), 1f, Range(random, 0.84f, 1.06f)),
                     LaneRoute.HeadingDegrees(level.Route, z) + Range(random, -12f, 12f), palette, name);
 
                 if (segment % 6 == 0)
