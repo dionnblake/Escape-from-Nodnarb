@@ -230,11 +230,12 @@ namespace EscapeFromNodnarb
             for (int segment = 0; segment < 10; segment++)
             {
                 float z = -4.5f + segment * 2.45f + Range(random, -0.24f, 0.24f);
-                float centerX = LaneRoute.CenterX(level.Route, z) + Range(random, -0.12f, 0.12f);
+                float sideBias = segment % 3 == 0 ? -0.72f : segment % 3 == 1 ? 0.62f : 0.0f;
+                float centerX = LaneRoute.CenterX(level.Route, z) + sideBias + Range(random, -0.16f, 0.16f);
                 string asset = segment % 2 == 0 ? "CrashBasinGroundA" : "CrashBasinGroundB";
                 string name = segment == 0 ? "AlienGroundPatch" : segment == 1 ? "AlienGroundCrust" : "CrashBasinGround_" + segment.ToString("00");
                 PlaceCrashBasinAsset(asset, root.transform, new Vector3(centerX, -0.02f, z),
-                    Range(random, 0.78f, 0.96f), new Vector3(Range(random, 1.00f, 1.24f), 1f, Range(random, 0.84f, 1.06f)),
+                    Range(random, 0.64f, 0.82f), new Vector3(Range(random, 0.88f, 1.10f), 1f, Range(random, 0.72f, 0.94f)),
                     LaneRoute.HeadingDegrees(level.Route, z) + Range(random, -12f, 12f), palette, name);
 
                 if (segment % 6 == 0)
